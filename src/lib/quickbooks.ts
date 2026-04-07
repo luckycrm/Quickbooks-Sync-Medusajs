@@ -1,7 +1,7 @@
 import { createHmac, randomUUID, timingSafeEqual } from "crypto"
 import type { Readable } from "stream"
 
-const axios = require("node-quickbooks/node_modules/axios")
+import axios from "axios"
 const FormData = require("form-data")
 const OAuthClient = require("intuit-oauth")
 const QuickBooks = require("node-quickbooks")
