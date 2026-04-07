@@ -1,4 +1,4 @@
 <div align="center">
-  <img src="./screenshot/quickbooksmedusa.png" width="1200">
+  <img src="https://github.com/luckycrm/Quickbooks-Sync-Medusajs/raw/main/screenshot/quickbooksmedusa.png" width="1200">
 </div>
 
