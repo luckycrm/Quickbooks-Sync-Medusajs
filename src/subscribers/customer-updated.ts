@@ -13,4 +13,7 @@ export default async function customerUpdatedHandler({
 
 export const config: SubscriberConfig = {
   event: "customer.updated",
+  context: {
+    subscriberId: "quickbooks-sync-customer-updated-handler",
+  },
 }
