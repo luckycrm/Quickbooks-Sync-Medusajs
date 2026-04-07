@@ -12562,42 +12562,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"medusa-plugin-quickbooks@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "medusa-plugin-quickbooks@workspace:."
-  dependencies:
-    "@medusajs/admin-sdk": "npm:2.13.1"
-    "@medusajs/cli": "npm:2.13.1"
-    "@medusajs/framework": "npm:2.13.1"
-    "@medusajs/icons": "npm:2.13.1"
-    "@medusajs/medusa": "npm:2.13.1"
-    "@medusajs/test-utils": "npm:2.13.1"
-    "@medusajs/ui": "npm:4.0.25"
-    "@swc/core": "npm:^1.7.28"
-    "@types/node": "npm:^20.0.0"
-    "@types/react": "npm:^18.3.2"
-    "@types/react-dom": "npm:^18.2.25"
-    intuit-oauth: "npm:^4.2.2"
-    node-quickbooks: "npm:^2.0.48"
-    prop-types: "npm:^15.8.1"
-    react: "npm:^18.2.0"
-    react-dom: "npm:^18.2.0"
-    sharp: "npm:^0.34.5"
-    ts-node: "npm:^10.9.2"
-    typescript: "npm:^5.6.2"
-    vite: "npm:^5.2.11"
-    yalc: "npm:^1.0.0-pre.53"
-  peerDependencies:
-    "@medusajs/admin-sdk": 2.13.1
-    "@medusajs/cli": 2.13.1
-    "@medusajs/framework": 2.13.1
-    "@medusajs/icons": 2.13.1
-    "@medusajs/medusa": 2.13.1
-    "@medusajs/test-utils": 2.13.1
-    "@medusajs/ui": 4.0.25
-  languageName: unknown
-  linkType: soft
-
 "merge-descriptors@npm:1.0.3":
   version: 1.0.3
   resolution: "merge-descriptors@npm:1.0.3"
@@ -14037,6 +14001,42 @@ __metadata:
   checksum: 10c0/900a93d3cdae3acd7d16f642c29a642aea32c2026446151f0778c62ac089d4b8e6c986811076e1ae180a694cedf077d453a11b58ff0a865629a4f82ab558e102
   languageName: node
   linkType: hard
+
+"quickbooks-sync-medusajs@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "quickbooks-sync-medusajs@workspace:."
+  dependencies:
+    "@medusajs/admin-sdk": "npm:2.13.1"
+    "@medusajs/cli": "npm:2.13.1"
+    "@medusajs/framework": "npm:2.13.1"
+    "@medusajs/icons": "npm:2.13.1"
+    "@medusajs/medusa": "npm:2.13.1"
+    "@medusajs/test-utils": "npm:2.13.1"
+    "@medusajs/ui": "npm:4.0.25"
+    "@swc/core": "npm:^1.7.28"
+    "@types/node": "npm:^20.0.0"
+    "@types/react": "npm:^18.3.2"
+    "@types/react-dom": "npm:^18.2.25"
+    intuit-oauth: "npm:^4.2.2"
+    node-quickbooks: "npm:^2.0.48"
+    prop-types: "npm:^15.8.1"
+    react: "npm:^18.2.0"
+    react-dom: "npm:^18.2.0"
+    sharp: "npm:^0.34.5"
+    ts-node: "npm:^10.9.2"
+    typescript: "npm:^5.6.2"
+    vite: "npm:^5.2.11"
+    yalc: "npm:^1.0.0-pre.53"
+  peerDependencies:
+    "@medusajs/admin-sdk": 2.13.1
+    "@medusajs/cli": 2.13.1
+    "@medusajs/framework": 2.13.1
+    "@medusajs/icons": 2.13.1
+    "@medusajs/medusa": 2.13.1
+    "@medusajs/test-utils": 2.13.1
+    "@medusajs/ui": 4.0.25
+  languageName: unknown
+  linkType: soft
 
 "radix-ui@npm:1.1.2":
   version: 1.1.2
