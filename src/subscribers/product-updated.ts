@@ -13,4 +13,7 @@ export default async function productUpdatedHandler({
 
 export const config: SubscriberConfig = {
   event: "product.updated",
+  context: {
+    subscriberId: "quickbooks-product-updated",
+  },
 };

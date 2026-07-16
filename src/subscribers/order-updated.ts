@@ -13,4 +13,7 @@ export default async function orderUpdatedHandler({
 
 export const config: SubscriberConfig = {
   event: "order.updated",
+  context: {
+    subscriberId: "quickbooks-order-updated",
+  },
 };

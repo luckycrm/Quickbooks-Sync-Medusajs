@@ -13,4 +13,7 @@ export default async function orderCompletedHandler({
 
 export const config: SubscriberConfig = {
   event: "order.completed",
+  context: {
+    subscriberId: "quickbooks-order-completed",
+  },
 };
