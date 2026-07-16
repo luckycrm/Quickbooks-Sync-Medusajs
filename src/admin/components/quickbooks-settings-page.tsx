@@ -1,8 +1,8 @@
-import type { FormEvent } from "react"
-import { useEffect, useMemo, useState } from "react"
+import type { FormEvent } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
-  Badge,
   Button,
   Container,
   FocusModal,
@@ -10,83 +10,106 @@ import {
   Input,
   InlineTip,
   Label,
+  Select,
+  StatusBadge,
   Tabs,
   Text,
-} from "@medusajs/ui"
-import { useSearchParams } from "react-router-dom"
+  toast,
+  usePrompt,
+} from "@medusajs/ui";
+import { useSearchParams } from "react-router-dom";
+
+import { sdk } from "../lib/client";
+import { SectionHeader } from "./quickbooks-ui";
 
 type QuickbooksStatus = {
-  configured: boolean
-  connected: boolean
-  missingKeys?: string[]
-  environment?: string
-  redirectUri?: string
-  realmId?: string
-  expiresAt?: string
-  connectedAt?: string
-  company?: Record<string, unknown> | null
+  configured: boolean;
+  connected: boolean;
+  missingKeys?: string[];
+  environment?: string;
+  redirectUri?: string;
+  realmId?: string;
+  expiresAt?: string;
+  connectedAt?: string;
+  company?: Record<string, unknown> | null;
   incomeAccounts?: Array<{
-    id?: string | null
-    name?: string | null
-    fullyQualifiedName?: string | null
-    accountType?: string | null
-    accountSubType?: string | null
-  }>
-  selectedIncomeAccountId?: string | null
-  selectedIncomeAccountName?: string | null
-  companyError?: string
-  error?: string
-}
+    id?: string | null;
+    name?: string | null;
+    fullyQualifiedName?: string | null;
+    accountType?: string | null;
+    accountSubType?: string | null;
+  }>;
+  selectedIncomeAccountId?: string | null;
+  selectedIncomeAccountName?: string | null;
+  selectedPriceCurrency?: string | null;
+  availableCurrencies?: Array<{ code: string; isDefault: boolean }>;
+  selectedOrderTaxTreatment?: string | null;
+  selectedOrderTaxCodeId?: string | null;
+  selectedOrderTaxCodeName?: string | null;
+  taxCodes?: Array<{
+    id?: string | null;
+    name?: string | null;
+    description?: string | null;
+  }>;
+  companyError?: string;
+  error?: string;
+};
+
+const ORDER_TAX_TREATMENTS = [
+  { value: "out_of_scope", label: "Out of scope" },
+  { value: "inclusive", label: "Inclusive of tax" },
+  { value: "exclusive", label: "Exclusive of tax" },
+];
 
 type CompanyAddressForm = {
-  Line1: string
-  City: string
-  CountrySubDivisionCode: string
-  PostalCode: string
-  Country: string
-}
+  Line1: string;
+  City: string;
+  CountrySubDivisionCode: string;
+  PostalCode: string;
+  Country: string;
+};
 
 type CompanyFormState = {
-  CompanyName: string
-  LegalName: string
-  CompanyEmail: string
-  PrimaryPhone: string
-  Website: string
-  CustomerCommunicationEmail: string
-  CompanyAddr: CompanyAddressForm
-  LegalAddr: CompanyAddressForm
-  CustomerCommunicationAddr: CompanyAddressForm
-}
+  CompanyName: string;
+  LegalName: string;
+  CompanyEmail: string;
+  PrimaryPhone: string;
+  Website: string;
+  CustomerCommunicationEmail: string;
+  CompanyAddr: CompanyAddressForm;
+  LegalAddr: CompanyAddressForm;
+  CustomerCommunicationAddr: CompanyAddressForm;
+};
 
 const asRecord = (value: unknown) => {
   if (value && typeof value === "object") {
-    return value as Record<string, unknown>
+    return value as Record<string, unknown>;
   }
 
-  return null
-}
+  return null;
+};
 
 const formatValue = (value: unknown) => {
   if (value === null || value === undefined || value === "") {
-    return "-"
+    return "-";
   }
 
   if (typeof value === "string") {
-    return value
+    return value;
   }
 
   if (typeof value === "number" || typeof value === "boolean") {
-    return String(value)
+    return String(value);
   }
 
-  return JSON.stringify(value)
-}
+  return JSON.stringify(value);
+};
 
 const formatAddress = (value: unknown) => {
-  const address = asRecord(value)
+  const address = asRecord(value);
 
   if (!address) {
-    return "-"
+    return "-";
   }
 
   const parts = [
@@ -98,13 +121,13 @@ const formatAddress = (value: unknown) => {
     address.Country,
   ]
     .filter(Boolean)
-    .map((part) => String(part))
+    .map((part) => String(part));
 
-  return parts.length ? parts.join(", ") : "-"
-}
+  return parts.length ? parts.join(", ") : "-";
+};
 
 const addressToForm = (value: unknown): CompanyAddressForm => {
-  const address = asRecord(value)
+  const address = asRecord(value);
 
   return {
     Line1: String(address?.Line1 || ""),
@@ -112,22 +135,24 @@ const addressToForm = (value: unknown): CompanyAddressForm => {
     CountrySubDivisionCode: String(address?.CountrySubDivisionCode || ""),
     PostalCode: String(address?.PostalCode || ""),
     Country: String(address?.Country || ""),
-  }
-}
+  };
+};
 
-const companyToForm = (company: Record<string, unknown> | null): CompanyFormState => ({
+const companyToForm = (
+  company: Record<string, unknown> | null,
+): CompanyFormState => ({
   CompanyName: String(company?.CompanyName || ""),
   LegalName: String(company?.LegalName || ""),
   CompanyEmail: String(asRecord(company?.Email)?.Address || ""),
   PrimaryPhone: String(asRecord(company?.PrimaryPhone)?.FreeFormNumber || ""),
   Website: String(asRecord(company?.WebAddr)?.URI || ""),
   CustomerCommunicationEmail: String(
-    asRecord(company?.CustomerCommunicationEmailAddr)?.Address || ""
+    asRecord(company?.CustomerCommunicationEmailAddr)?.Address || "",
   ),
   CompanyAddr: addressToForm(company?.CompanyAddr),
   LegalAddr: addressToForm(company?.LegalAddr),
   CustomerCommunicationAddr: addressToForm(company?.CustomerCommunicationAddr),
-})
+});
 
 const Field = ({
   label,
@@ -135,10 +160,10 @@ const Field = ({
   onChange,
   type = "text",
 }: {
-  label: string
-  value: string
-  onChange: (value: string) => void
-  type?: string
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: string;
 }) => (
   <label className="flex flex-col gap-2">
     <Label size="small" weight="plus">
@@ -151,52 +176,32 @@ const Field = ({
       onChange={(event) => onChange(event.target.value)}
     />
   </label>
-)
+);
 
-const SummaryRow = ({
-  label,
-  value,
-}: {
-  label: string
-  value: unknown
-}) => (
-  <div className="grid grid-cols-1 gap-1 border-b border-ui-border-base py-4 md:grid-cols-[220px_1fr] md:gap-4">
-    <Text size="small" weight="plus" className="text-ui-fg-subtle">
+const SummaryRow = ({ label, value }: { label: string; value: unknown }) => (
+  <div className="grid grid-cols-1 gap-1 py-4 md:grid-cols-[220px_1fr] md:gap-4">
+    <Text
+      size="small"
+      leading="compact"
+      weight="plus"
+      className="text-ui-fg-subtle"
+    >
       {label}
     </Text>
-    <Text>{formatValue(value)}</Text>
-  </div>
-)
-
-const SectionTitle = ({
-  title,
-  subtitle,
-}: {
-  title: string
-  subtitle: string
-}) => (
-  <div>
-    <Heading level="h2">{title}</Heading>
-    <Text className="text-ui-fg-subtle" size="small">
-      {subtitle}
+    <Text size="small" leading="compact">
+      {formatValue(value)}
     </Text>
   </div>
-)
-
-const EmptyState = ({ message }: { message: string }) => (
-  <Text className="text-ui-fg-subtle" size="small">
-    {message}
-  </Text>
-)
+);
 
 const AddressEditor = ({
   title,
   value,
   onChange,
 }: {
-  title: string
-  value: CompanyAddressForm
-  onChange: (field: keyof CompanyAddressForm, value: string) => void
+  title: string;
+  value: CompanyAddressForm;
+  onChange: (field: keyof CompanyAddressForm, value: string) => void;
 }) => (
   <div className="rounded-md border border-ui-border-base p-4">
     <Heading level="h3">{title}</Heading>
@@ -228,127 +233,202 @@ const AddressEditor = ({
       />
     </div>
   </div>
-)
+);
 
 const QuickbooksSettingsPage = () => {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const [status, setStatus] = useState<QuickbooksStatus | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [isConnecting, setIsConnecting] = useState(false)
-  const [isDisconnecting, setIsDisconnecting] = useState(false)
-  const [isSavingCompany, setIsSavingCompany] = useState(false)
-  const [isSavingSyncSettings, setIsSavingSyncSettings] = useState(false)
-  const [isEditorOpen, setIsEditorOpen] = useState(false)
-  const [message, setMessage] = useState<string | null>(null)
-  const [selectedIncomeAccountId, setSelectedIncomeAccountId] = useState("")
+  const [searchParams, setSearchParams] = useSearchParams();
+  const queryClient = useQueryClient();
+  const prompt = usePrompt();
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [selectedIncomeAccountId, setSelectedIncomeAccountId] = useState("");
+  const [selectedPriceCurrency, setSelectedPriceCurrency] = useState("");
+  const [selectedOrderTaxTreatment, setSelectedOrderTaxTreatment] =
+    useState("");
+  const [selectedOrderTaxCodeId, setSelectedOrderTaxCodeId] = useState("");
   const [companyForm, setCompanyForm] = useState<CompanyFormState>(() =>
-    companyToForm(null)
-  )
+    companyToForm(null),
+  );
 
-  const callbackMessage = useMemo(() => {
-    const state = searchParams.get("quickbooks")
-    const errorMessage = searchParams.get("message")
+  const statusQuery = useQuery({
+    queryKey: ["quickbooks-status"],
+    queryFn: () =>
+      sdk.client.fetch<QuickbooksStatus>("/admin/quickbooks/status"),
+  });
+
+  const status = statusQuery.data;
+
+  const refreshStatus = () =>
+    queryClient.invalidateQueries({ queryKey: ["quickbooks-status"] });
+
+  const refreshAllQuickbooksData = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["quickbooks-status"] }),
+      queryClient.invalidateQueries({ queryKey: ["quickbooks-dashboard"] }),
+      queryClient.invalidateQueries({ queryKey: ["quickbooks-products"] }),
+      queryClient.invalidateQueries({ queryKey: ["quickbooks-orders"] }),
+      queryClient.invalidateQueries({ queryKey: ["quickbooks-customers"] }),
+    ]);
+
+  const resetMutation = useMutation({
+    mutationFn: (type: "customers" | "orders" | "all") =>
+      sdk.client.fetch<{ success: boolean; message: string }>(
+        "/admin/quickbooks/reset",
+        {
+          method: "POST",
+          body: { type },
+        },
+      ),
+    onSuccess: async (result) => {
+      toast.success(result.message || "QuickBooks data cleared.");
+      await refreshAllQuickbooksData();
+    },
+    onError: (e: any) => {
+      toast.error(e?.message || "Unable to clear QuickBooks data.");
+    },
+  });
+
+  const handleClear = async (input: {
+    type: "customers" | "orders" | "all";
+    title: string;
+    description: string;
+  }) => {
+    const confirmed = await prompt({
+      title: input.title,
+      description: input.description,
+      confirmText: "Clear",
+      cancelText: "Cancel",
+    });
+
+    if (confirmed) {
+      resetMutation.mutate(input.type);
+    }
+  };
+
+  useEffect(() => {
+    const state = searchParams.get("quickbooks");
+    const errorMessage = searchParams.get("message");
+
+    if (!state) {
+      return;
+    }
 
     if (state === "connected") {
-      return "QuickBooks connected successfully."
+      toast.success("QuickBooks connected successfully.");
+    } else if (state === "error") {
+      toast.error(errorMessage || "QuickBooks connection failed.");
     }
 
-    if (state === "error") {
-      return errorMessage || "QuickBooks connection failed."
-    }
-
-    return null
-  }, [searchParams])
-
-  const loadStatus = async () => {
-    setIsLoading(true)
-
-    try {
-      const response = await fetch("/admin/quickbooks/status")
-      const json = (await response.json()) as QuickbooksStatus
-      setStatus(json)
-    } catch (e) {
-      setMessage(
-        e instanceof Error ? e.message : "Unable to load QuickBooks status."
-      )
-    } finally {
-      setIsLoading(false)
-    }
-  }
+    const next = new URLSearchParams(searchParams);
+    next.delete("quickbooks");
+    next.delete("message");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
-    void loadStatus()
-  }, [])
+    setCompanyForm(companyToForm(asRecord(status?.company)));
+  }, [status?.company]);
 
   useEffect(() => {
-    if (callbackMessage) {
-      setMessage(callbackMessage)
-
-      const next = new URLSearchParams(searchParams)
-      next.delete("quickbooks")
-      next.delete("message")
-      setSearchParams(next, { replace: true })
-    }
-  }, [callbackMessage, searchParams, setSearchParams])
+    setSelectedIncomeAccountId(status?.selectedIncomeAccountId || "");
+  }, [status?.selectedIncomeAccountId]);
 
   useEffect(() => {
-    setCompanyForm(companyToForm(asRecord(status?.company)))
-  }, [status?.company])
+    setSelectedPriceCurrency(status?.selectedPriceCurrency || "");
+  }, [status?.selectedPriceCurrency]);
 
   useEffect(() => {
-    setSelectedIncomeAccountId(status?.selectedIncomeAccountId || "")
-  }, [status?.selectedIncomeAccountId])
+    setSelectedOrderTaxTreatment(status?.selectedOrderTaxTreatment || "");
+  }, [status?.selectedOrderTaxTreatment]);
 
-  const handleConnect = async () => {
-    setIsConnecting(true)
-    setMessage(null)
+  useEffect(() => {
+    setSelectedOrderTaxCodeId(status?.selectedOrderTaxCodeId || "");
+  }, [status?.selectedOrderTaxCodeId]);
 
-    try {
-      const response = await fetch("/admin/quickbooks/connect")
-      const json = (await response.json()) as {
-        url?: string
-        missingKeys?: string[]
+  const connectMutation = useMutation({
+    mutationFn: () =>
+      sdk.client.fetch<{ url?: string; missingKeys?: string[] }>(
+        "/admin/quickbooks/connect",
+      ),
+    onSuccess: (result) => {
+      if (!result.url) {
+        toast.error(
+          result.missingKeys?.length
+            ? `Missing backend configuration: ${result.missingKeys.join(", ")}`
+            : "Unable to start the QuickBooks connection flow.",
+        );
+        return;
       }
 
-      if (!response.ok || !json.url) {
-        throw new Error(
-          json.missingKeys?.length
-            ? `Missing backend configuration: ${json.missingKeys.join(", ")}`
-            : "Unable to start the QuickBooks connection flow."
-        )
-      }
+      window.location.href = result.url;
+    },
+    onError: (e: any) => {
+      toast.error(e?.message || "Unable to start QuickBooks OAuth.");
+    },
+  });
 
-      window.location.href = json.url
-    } catch (e) {
-      setMessage(
-        e instanceof Error ? e.message : "Unable to start QuickBooks OAuth."
-      )
-      setIsConnecting(false)
-    }
-  }
-
-  const handleDisconnect = async () => {
-    setIsDisconnecting(true)
-    setMessage(null)
-
-    try {
-      const response = await fetch("/admin/quickbooks/disconnect", {
+  const disconnectMutation = useMutation({
+    mutationFn: () =>
+      sdk.client.fetch("/admin/quickbooks/disconnect", {
         method: "POST",
-      })
+      }),
+    onSuccess: async () => {
+      toast.success("QuickBooks disconnected.");
+      setIsEditorOpen(false);
+      await refreshStatus();
+    },
+    onError: (e: any) => {
+      toast.error(e?.message || "Unable to disconnect QuickBooks.");
+    },
+  });
 
-      if (!response.ok) {
-        throw new Error("Unable to disconnect QuickBooks.")
-      }
+  const saveCompanyMutation = useMutation({
+    mutationFn: (form: CompanyFormState) =>
+      sdk.client.fetch<{ message?: string }>("/admin/quickbooks/company", {
+        method: "POST",
+        body: form,
+      }),
+    onSuccess: async () => {
+      toast.success("QuickBooks company info updated.");
+      setIsEditorOpen(false);
+      await refreshStatus();
+    },
+    onError: (e: any) => {
+      toast.error(e?.message || "Unable to update QuickBooks company info.");
+    },
+  });
 
-      setMessage("QuickBooks disconnected.")
-      setIsEditorOpen(false)
-      await loadStatus()
-    } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Unable to disconnect.")
-    } finally {
-      setIsDisconnecting(false)
-    }
-  }
+  const saveSyncSettingsMutation = useMutation({
+    mutationFn: (input: {
+      incomeAccountId: string;
+      priceCurrency: string;
+      orderTaxTreatment: string;
+      orderTaxCodeId: string;
+    }) =>
+      sdk.client.fetch<{ message?: string }>("/admin/quickbooks/settings", {
+        method: "POST",
+        body: {
+          ...(input.incomeAccountId
+            ? { quickbooks_product_income_account_id: input.incomeAccountId }
+            : {}),
+          ...(input.priceCurrency
+            ? { quickbooks_price_currency: input.priceCurrency }
+            : {}),
+          ...(input.orderTaxTreatment
+            ? { quickbooks_order_tax_treatment: input.orderTaxTreatment }
+            : {}),
+          ...(input.orderTaxCodeId
+            ? { quickbooks_order_tax_code_id: input.orderTaxCodeId }
+            : {}),
+        },
+      }),
+    onSuccess: async () => {
+      toast.success("QuickBooks product sync settings updated.");
+      await refreshStatus();
+    },
+    onError: (e: any) => {
+      toast.error(e?.message || "Unable to update QuickBooks sync settings.");
+    },
+  });
 
   const updateAddressField = (
     key: keyof Pick<
@@ -356,7 +436,7 @@ const QuickbooksSettingsPage = () => {
       "CompanyAddr" | "LegalAddr" | "CustomerCommunicationAddr"
     >,
     field: keyof CompanyAddressForm,
-    value: string
+    value: string,
   ) => {
     setCompanyForm((current) => ({
       ...current,
@@ -364,147 +444,110 @@ const QuickbooksSettingsPage = () => {
         ...current[key],
         [field]: value,
       },
-    }))
-  }
+    }));
+  };
 
-  const handleSaveCompany = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setIsSavingCompany(true)
-    setMessage(null)
+  const handleSaveCompany = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    saveCompanyMutation.mutate(companyForm);
+  };
 
-    try {
-      const response = await fetch("/admin/quickbooks/company", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(companyForm),
-      })
+  const handleSaveSyncSettings = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    saveSyncSettingsMutation.mutate({
+      incomeAccountId: selectedIncomeAccountId,
+      priceCurrency: selectedPriceCurrency,
+      orderTaxTreatment: selectedOrderTaxTreatment,
+      orderTaxCodeId:
+        selectedOrderTaxTreatment === "exclusive" ? selectedOrderTaxCodeId : "",
+    });
+  };
 
-      const json = (await response.json()) as { message?: string }
-
-      if (!response.ok) {
-        throw new Error(json.message || "Unable to update QuickBooks company info.")
-      }
-
-      setMessage("QuickBooks company info updated.")
-      setIsEditorOpen(false)
-      await loadStatus()
-    } catch (e) {
-      setMessage(
-        e instanceof Error ? e.message : "Unable to update company info."
-      )
-    } finally {
-      setIsSavingCompany(false)
-    }
-  }
-
-  const handleSaveSyncSettings = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setIsSavingSyncSettings(true)
-    setMessage(null)
-
-    try {
-      const response = await fetch("/admin/quickbooks/settings", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          quickbooks_product_income_account_id: selectedIncomeAccountId,
-        }),
-      })
-
-      const json = (await response.json()) as { message?: string }
-
-      if (!response.ok) {
-        throw new Error(json.message || "Unable to update QuickBooks sync settings.")
-      }
-
-      setMessage("QuickBooks product sync settings updated.")
-      await loadStatus()
-    } catch (e) {
-      setMessage(
-        e instanceof Error ? e.message : "Unable to update QuickBooks sync settings."
-      )
-    } finally {
-      setIsSavingSyncSettings(false)
-    }
-  }
-
-  const companyInfo = asRecord(status?.company)
+  const companyInfo = asRecord(status?.company);
   const companyName = String(
-    companyInfo?.CompanyName || companyInfo?.LegalName || "QuickBooks company"
-  )
+    companyInfo?.CompanyName || companyInfo?.LegalName || "QuickBooks company",
+  );
   const needsReconnect =
-    !!status?.error || (!!status?.connected && !!status?.companyError)
+    !!status?.error || (!!status?.connected && !!status?.companyError);
   const environmentLabel =
-    status?.environment === "production" ? "Production" : "Sandbox"
+    status?.environment === "production" ? "Production" : "Sandbox";
   const topTipVariant = !status?.configured
     ? "warning"
     : status?.error || status?.companyError
       ? "error"
       : status?.connected
         ? "success"
-        : "info"
+        : "info";
   const topTipLabel = !status?.configured
     ? "QuickBooks setup incomplete"
     : status?.error || status?.companyError
       ? "QuickBooks needs attention"
       : status?.connected
         ? "QuickBooks connected"
-        : "QuickBooks not connected"
+        : "QuickBooks not connected";
+
+  const incomeAccounts = useMemo(
+    () =>
+      (status?.incomeAccounts || []).filter(
+        (account) => account.id || account.name,
+      ),
+    [status?.incomeAccounts],
+  );
 
   return (
     <div className="flex flex-col gap-y-4">
-      <div className="flex flex-col gap-4 px-1 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <Heading level="h1">QuickBooks Settings</Heading>
-          <Text className="text-ui-fg-subtle" size="small">
-            Manage your QuickBooks connection and company details.
-          </Text>
-        </div>
+      <Container className="p-0 overflow-hidden">
+        <div className="flex flex-col gap-4 px-6 py-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex flex-col gap-y-1">
+            <Heading level="h1">QuickBooks Settings</Heading>
+            <Text size="small" leading="compact" className="text-ui-fg-subtle">
+              Manage your QuickBooks connection and company details.
+            </Text>
+          </div>
 
-        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-          <Badge color={status?.connected ? "green" : "grey"} size="2xsmall">
-            {status?.connected ? "Connected" : "Disconnected"}
-          </Badge>
-          {needsReconnect && (
-            <Badge color="orange" size="2xsmall">
-              Needs reconnect
-            </Badge>
-          )}
-          <Button
-            size="small"
-            variant={
-              needsReconnect || !status?.connected ? "primary" : "secondary"
-            }
-            onClick={handleConnect}
-            isLoading={isConnecting}
-            disabled={isLoading}
-          >
-            {needsReconnect
-              ? "Reconnect"
-              : status?.connected
-                ? "Connect again"
-                : "Connect"}
-          </Button>
-          <Button
-            size="small"
-            variant="secondary"
-            onClick={handleDisconnect}
-            isLoading={isDisconnecting}
-            disabled={!status?.connected || isLoading}
-          >
-            Disconnect
-          </Button>
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            <StatusBadge color={status?.connected ? "green" : "grey"}>
+              {status?.connected ? "Connected" : "Disconnected"}
+            </StatusBadge>
+            {needsReconnect ? (
+              <StatusBadge color="orange">Needs reconnect</StatusBadge>
+            ) : null}
+            <Button
+              size="small"
+              variant={
+                needsReconnect || !status?.connected ? "primary" : "secondary"
+              }
+              onClick={() => connectMutation.mutate()}
+              isLoading={connectMutation.isPending}
+              disabled={statusQuery.isLoading}
+            >
+              {needsReconnect
+                ? "Reconnect"
+                : status?.connected
+                  ? "Connect again"
+                  : "Connect"}
+            </Button>
+            <Button
+              size="small"
+              variant="secondary"
+              onClick={() => disconnectMutation.mutate()}
+              isLoading={disconnectMutation.isPending}
+              disabled={!status?.connected || statusQuery.isLoading}
+            >
+              Disconnect
+            </Button>
+          </div>
         </div>
-      </div>
+      </Container>
 
-      <InlineTip
-        label={topTipLabel}
-        variant={topTipVariant}
-      >
+      {statusQuery.isError ? (
+        <Alert variant="error">
+          {(statusQuery.error as Error)?.message ||
+            "Unable to load QuickBooks status."}
+        </Alert>
+      ) : null}
+
+      <InlineTip label={topTipLabel} variant={topTipVariant}>
         {!status?.configured
           ? `Missing backend configuration${status?.missingKeys?.length ? `: ${status.missingKeys.join(", ")}` : "."}`
           : status?.error || status?.companyError
@@ -527,7 +570,7 @@ const QuickbooksSettingsPage = () => {
               value="sync"
               className="w-full justify-start rounded-md bg-transparent text-left"
             >
-              Product Sync
+              Sync Settings
             </Tabs.Trigger>
             <Tabs.Trigger
               value="company"
@@ -535,56 +578,196 @@ const QuickbooksSettingsPage = () => {
             >
               Company Info
             </Tabs.Trigger>
+            <Tabs.Trigger
+              value="data"
+              className="w-full justify-start rounded-md bg-transparent text-left"
+            >
+              Data Management
+            </Tabs.Trigger>
           </Tabs.List>
         </div>
 
-        <Container className="flex-1 p-0">
-          <div className="p-6">
+        <Container className="flex-1 p-0 overflow-hidden">
+          <div className="px-6 py-4">
             <Tabs.Content value="sync" className="m-0">
               <div className="flex flex-col gap-6">
-                <SectionTitle
+                <SectionHeader
                   title="Product Sync"
-                  subtitle="Choose which QuickBooks income account to use when creating product items."
+                  description="Choose which QuickBooks income account to use when creating product items."
                 />
 
                 {!status?.connected ? (
                   <Alert variant="warning">
-                    <Text size="small">
-                      Connect QuickBooks first to choose the product income account.
-                    </Text>
+                    Connect QuickBooks first to choose the product income
+                    account.
                   </Alert>
                 ) : (
-                  <form className="flex flex-col gap-4" onSubmit={handleSaveSyncSettings}>
-                    <label className="flex flex-col gap-2">
+                  <form
+                    className="flex flex-col gap-4"
+                    onSubmit={handleSaveSyncSettings}
+                  >
+                    <div className="flex max-w-md flex-col gap-2">
                       <Label size="small" weight="plus">
                         Income account
                       </Label>
-                      <select
+                      <Select
                         value={selectedIncomeAccountId}
-                        onChange={(event) => setSelectedIncomeAccountId(event.target.value)}
-                        className="h-10 rounded-md border border-ui-border-base bg-ui-bg-field px-3 text-sm"
+                        onValueChange={setSelectedIncomeAccountId}
                       >
-                        <option value="">Select an income account</option>
-                        {(status?.incomeAccounts || []).map((account) => (
-                          <option key={account.id || account.name} value={account.id || ""}>
-                            {account.fullyQualifiedName || account.name || account.id}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                        <Select.Trigger>
+                          <Select.Value placeholder="Select an income account" />
+                        </Select.Trigger>
+                        <Select.Content>
+                          {incomeAccounts.map((account) => (
+                            <Select.Item
+                              key={account.id || account.name || ""}
+                              value={account.id || ""}
+                            >
+                              {account.fullyQualifiedName ||
+                                account.name ||
+                                account.id}
+                            </Select.Item>
+                          ))}
+                        </Select.Content>
+                      </Select>
+                      <Text
+                        size="xsmall"
+                        leading="compact"
+                        className="text-ui-fg-subtle"
+                      >
+                        Currently selected:{" "}
+                        {status?.selectedIncomeAccountName || "Not set"}
+                      </Text>
+                    </div>
 
-                    <Text size="small" className="text-ui-fg-subtle">
-                      Selected: {status?.selectedIncomeAccountName || "Not set"}
-                    </Text>
+                    <div className="flex max-w-md flex-col gap-2">
+                      <Label size="small" weight="plus">
+                        Price currency
+                      </Label>
+                      <Select
+                        value={selectedPriceCurrency}
+                        onValueChange={setSelectedPriceCurrency}
+                      >
+                        <Select.Trigger>
+                          <Select.Value placeholder="Select a currency" />
+                        </Select.Trigger>
+                        <Select.Content>
+                          {(status?.availableCurrencies || []).map(
+                            (currency) => (
+                              <Select.Item
+                                key={currency.code}
+                                value={currency.code}
+                              >
+                                {currency.code.toUpperCase()}
+                                {currency.isDefault ? " (store default)" : ""}
+                              </Select.Item>
+                            ),
+                          )}
+                        </Select.Content>
+                      </Select>
+                      <Text
+                        size="xsmall"
+                        leading="compact"
+                        className="text-ui-fg-subtle"
+                      >
+                        Variant prices in this currency are sent to QuickBooks
+                        as the item sales price. Currently:{" "}
+                        {status?.selectedPriceCurrency?.toUpperCase() ||
+                          "USD (default)"}
+                      </Text>
+                    </div>
+
+                    <div className="border-t border-ui-border-base pt-4">
+                      <SectionHeader
+                        title="Order Sync"
+                        description="Control how order amounts and taxes are sent to QuickBooks."
+                      />
+                    </div>
+
+                    <div className="flex max-w-md flex-col gap-2">
+                      <Label size="small" weight="plus">
+                        Order amounts are
+                      </Label>
+                      <Select
+                        value={selectedOrderTaxTreatment}
+                        onValueChange={setSelectedOrderTaxTreatment}
+                      >
+                        <Select.Trigger>
+                          <Select.Value placeholder="Select tax treatment" />
+                        </Select.Trigger>
+                        <Select.Content>
+                          {ORDER_TAX_TREATMENTS.map((treatment) => (
+                            <Select.Item
+                              key={treatment.value}
+                              value={treatment.value}
+                            >
+                              {treatment.label}
+                            </Select.Item>
+                          ))}
+                        </Select.Content>
+                      </Select>
+                      <Text
+                        size="xsmall"
+                        leading="compact"
+                        className="text-ui-fg-subtle"
+                      >
+                        Out of scope: no tax. Inclusive: amounts already contain
+                        tax. Exclusive: QuickBooks adds tax on top using the
+                        sales tax code below.
+                      </Text>
+                    </div>
+
+                    {selectedOrderTaxTreatment === "exclusive" ? (
+                      <div className="flex max-w-md flex-col gap-2">
+                        <Label size="small" weight="plus">
+                          Sales tax code
+                        </Label>
+                        <Select
+                          value={selectedOrderTaxCodeId}
+                          onValueChange={setSelectedOrderTaxCodeId}
+                        >
+                          <Select.Trigger>
+                            <Select.Value placeholder="Select a sales tax code" />
+                          </Select.Trigger>
+                          <Select.Content>
+                            {(status?.taxCodes || [])
+                              .filter((code) => code.id)
+                              .map((code) => (
+                                <Select.Item
+                                  key={code.id || ""}
+                                  value={code.id || ""}
+                                >
+                                  {code.name || code.id}
+                                  {code.description
+                                    ? ` — ${code.description}`
+                                    : ""}
+                                </Select.Item>
+                              ))}
+                          </Select.Content>
+                        </Select>
+                        <Text
+                          size="xsmall"
+                          leading="compact"
+                          className="text-ui-fg-subtle"
+                        >
+                          Applied to every invoice line item. Currently:{" "}
+                          {status?.selectedOrderTaxCodeName || "Not set"}
+                        </Text>
+                      </div>
+                    ) : null}
 
                     <div className="flex justify-start">
                       <Button
                         type="submit"
                         size="small"
-                        isLoading={isSavingSyncSettings}
-                        disabled={!selectedIncomeAccountId}
+                        isLoading={saveSyncSettingsMutation.isPending}
+                        disabled={
+                          !selectedIncomeAccountId &&
+                          !selectedPriceCurrency &&
+                          !selectedOrderTaxTreatment
+                        }
                       >
-                        Save Product Sync Settings
+                        Save Sync Settings
                       </Button>
                     </div>
                   </form>
@@ -595,12 +778,15 @@ const QuickbooksSettingsPage = () => {
             <Tabs.Content value="company" className="m-0">
               <div className="flex flex-col gap-6">
                 <div className="flex items-start justify-between gap-4">
-                  <SectionTitle
+                  <SectionHeader
                     title="Company Info"
-                    subtitle="View and edit the connected QuickBooks company details."
+                    description="View and edit the connected QuickBooks company details."
                   />
 
-                  <FocusModal open={isEditorOpen} onOpenChange={setIsEditorOpen}>
+                  <FocusModal
+                    open={isEditorOpen}
+                    onOpenChange={setIsEditorOpen}
+                  >
                     <FocusModal.Trigger asChild>
                       <Button
                         size="small"
@@ -626,7 +812,7 @@ const QuickbooksSettingsPage = () => {
                             <Button
                               type="submit"
                               size="small"
-                              isLoading={isSavingCompany}
+                              isLoading={saveCompanyMutation.isPending}
                             >
                               Save
                             </Button>
@@ -637,8 +823,13 @@ const QuickbooksSettingsPage = () => {
                           <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-2 py-10">
                             <div>
                               <Heading level="h1">Edit Company Info</Heading>
-                              <Text className="mt-1 text-ui-fg-subtle" size="small">
-                                Update the company details synced from QuickBooks.
+                              <Text
+                                size="small"
+                                leading="compact"
+                                className="mt-1 text-ui-fg-subtle"
+                              >
+                                Update the company details synced from
+                                QuickBooks.
                               </Text>
                             </div>
 
@@ -713,7 +904,11 @@ const QuickbooksSettingsPage = () => {
                                 title="Company address"
                                 value={companyForm.CompanyAddr}
                                 onChange={(field, value) =>
-                                  updateAddressField("CompanyAddr", field, value)
+                                  updateAddressField(
+                                    "CompanyAddr",
+                                    field,
+                                    value,
+                                  )
                                 }
                               />
                               <AddressEditor
@@ -730,7 +925,7 @@ const QuickbooksSettingsPage = () => {
                                   updateAddressField(
                                     "CustomerCommunicationAddr",
                                     field,
-                                    value
+                                    value,
                                   )
                                 }
                               />
@@ -744,21 +939,27 @@ const QuickbooksSettingsPage = () => {
 
                 {!status?.connected ? (
                   <Alert variant="warning">
-                    <Text size="small">
-                      Connect QuickBooks first to load and edit company details.
-                    </Text>
+                    Connect QuickBooks first to load and edit company details.
                   </Alert>
                 ) : (
                   <div className="divide-y divide-ui-border-base">
-                    <SummaryRow label="Company name" value={companyInfo?.CompanyName} />
-                    <SummaryRow label="Legal name" value={companyInfo?.LegalName} />
+                    <SummaryRow
+                      label="Company name"
+                      value={companyInfo?.CompanyName}
+                    />
+                    <SummaryRow
+                      label="Legal name"
+                      value={companyInfo?.LegalName}
+                    />
                     <SummaryRow
                       label="Company email"
                       value={asRecord(companyInfo?.Email)?.Address}
                     />
                     <SummaryRow
                       label="Primary phone"
-                      value={asRecord(companyInfo?.PrimaryPhone)?.FreeFormNumber}
+                      value={
+                        asRecord(companyInfo?.PrimaryPhone)?.FreeFormNumber
+                      }
                     />
                     <SummaryRow
                       label="Website"
@@ -767,7 +968,8 @@ const QuickbooksSettingsPage = () => {
                     <SummaryRow
                       label="Customer communication email"
                       value={
-                        asRecord(companyInfo?.CustomerCommunicationEmailAddr)?.Address
+                        asRecord(companyInfo?.CustomerCommunicationEmailAddr)
+                          ?.Address
                       }
                     />
                     <SummaryRow
@@ -780,18 +982,143 @@ const QuickbooksSettingsPage = () => {
                     />
                     <SummaryRow
                       label="Customer communication address"
-                      value={formatAddress(companyInfo?.CustomerCommunicationAddr)}
+                      value={formatAddress(
+                        companyInfo?.CustomerCommunicationAddr,
+                      )}
                     />
                   </div>
                 )}
               </div>
             </Tabs.Content>
 
+            <Tabs.Content value="data" className="m-0">
+              <div className="flex flex-col gap-6">
+                <SectionHeader
+                  title="Data Management"
+                  description="Clear the QuickBooks sync data stored in Medusa. Records inside QuickBooks are never deleted."
+                />
+
+                <div className="flex flex-col divide-y divide-ui-border-base rounded-md border border-ui-border-base">
+                  <div className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
+                    <div className="flex flex-col gap-y-1">
+                      <Text size="small" leading="compact" weight="plus">
+                        Customer links
+                      </Text>
+                      <Text
+                        size="small"
+                        leading="compact"
+                        className="text-ui-fg-subtle"
+                      >
+                        Mappings between Medusa customers and QuickBooks
+                        customers.
+                      </Text>
+                    </div>
+                    <Button
+                      size="small"
+                      variant="secondary"
+                      isLoading={resetMutation.isPending}
+                      onClick={() =>
+                        void handleClear({
+                          type: "customers",
+                          title: "Clear customer links?",
+                          description:
+                            "All customer sync mappings stored in Medusa will be removed. The next sync re-creates them.",
+                        })
+                      }
+                    >
+                      Clear
+                    </Button>
+                  </div>
+
+                  <div className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
+                    <div className="flex flex-col gap-y-1">
+                      <Text size="small" leading="compact" weight="plus">
+                        Order links
+                      </Text>
+                      <Text
+                        size="small"
+                        leading="compact"
+                        className="text-ui-fg-subtle"
+                      >
+                        Mappings between Medusa orders and QuickBooks invoices
+                        or sales receipts.
+                      </Text>
+                    </div>
+                    <Button
+                      size="small"
+                      variant="secondary"
+                      isLoading={resetMutation.isPending}
+                      onClick={() =>
+                        void handleClear({
+                          type: "orders",
+                          title: "Clear order links?",
+                          description:
+                            "All order sync mappings stored in Medusa will be removed. Re-syncing orders creates new documents in QuickBooks.",
+                        })
+                      }
+                    >
+                      Clear
+                    </Button>
+                  </div>
+
+                  <div className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
+                    <div className="flex flex-col gap-y-1">
+                      <Text size="small" leading="compact" weight="plus">
+                        Product links
+                      </Text>
+                      <Text
+                        size="small"
+                        leading="compact"
+                        className="text-ui-fg-subtle"
+                      >
+                        Products are matched to QuickBooks items by SKU — no
+                        local sync data is stored, so there is nothing to clear.
+                      </Text>
+                    </div>
+                    <Button size="small" variant="secondary" disabled>
+                      Nothing to clear
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-3 rounded-md border border-ui-border-error bg-ui-bg-base p-4 md:flex-row md:items-center md:justify-between">
+                  <div className="flex flex-col gap-y-1">
+                    <Text size="small" leading="compact" weight="plus">
+                      Clear everything
+                    </Text>
+                    <Text
+                      size="small"
+                      leading="compact"
+                      className="text-ui-fg-subtle"
+                    >
+                      Removes all customer and order links and disconnects the
+                      QuickBooks connection. You will need to reconnect
+                      afterwards.
+                    </Text>
+                  </div>
+                  <Button
+                    size="small"
+                    variant="danger"
+                    isLoading={resetMutation.isPending}
+                    onClick={() =>
+                      void handleClear({
+                        type: "all",
+                        title: "Clear all QuickBooks data?",
+                        description:
+                          "All customer and order links will be removed and QuickBooks will be disconnected. Records in QuickBooks are not deleted. This cannot be undone.",
+                      })
+                    }
+                  >
+                    Clear All & Disconnect
+                  </Button>
+                </div>
+              </div>
+            </Tabs.Content>
           </div>
         </Container>
       </Tabs>
     </div>
-  )
-}
+  );
+};
 
-export default QuickbooksSettingsPage
+export default QuickbooksSettingsPage;

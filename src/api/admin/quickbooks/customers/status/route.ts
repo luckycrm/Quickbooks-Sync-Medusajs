@@ -1,27 +1,25 @@
 import type {
   AuthenticatedMedusaRequest,
   MedusaResponse,
-} from "@medusajs/framework/http"
-import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
+} from "@medusajs/framework/http";
+import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
 
-import { QUICKBOOKS_MODULE } from "../../../../../modules/quickbooks"
-import type QuickbooksModuleService from "../../../../../modules/quickbooks/service"
+import { QUICKBOOKS_MODULE } from "../../../../../modules/quickbooks";
+import type QuickbooksModuleService from "../../../../../modules/quickbooks/service";
+import { getReadyQuickbooksConnection } from "../../../../../lib/connection";
 import {
   findQuickbooksCustomers,
   getBaseUrl,
   getQuickbooksConfig,
-  isConnectionExpired,
-  refreshOauthToken,
-  toStoredConnection,
-} from "../../../../../lib/quickbooks"
+} from "../../../../../lib/quickbooks";
 
 type QueryGraph = {
   graph: (input: {
-    entity: string
-    fields: string[]
-    filters?: Record<string, unknown>
-  }) => Promise<{ data?: Record<string, unknown>[] }>
-}
+    entity: string;
+    fields: string[];
+    filters?: Record<string, unknown>;
+  }) => Promise<{ data?: Record<string, unknown>[] }>;
+};
 
 const normalizeMedusaCustomer = (customer: Record<string, unknown>) => ({
   id: customer.id || null,
@@ -33,7 +31,7 @@ const normalizeMedusaCustomer = (customer: Record<string, unknown>) => ({
   has_account: customer.has_account || null,
   created_at: customer.created_at || null,
   updated_at: customer.updated_at || null,
-})
+});
 
 const normalizeQuickbooksCustomer = (customer: Record<string, unknown>) => ({
   id: customer.Id || null,
@@ -43,25 +41,31 @@ const normalizeQuickbooksCustomer = (customer: Record<string, unknown>) => ({
   company_name: customer.CompanyName || null,
   given_name: customer.GivenName || null,
   family_name: customer.FamilyName || null,
-  primary_email: (customer.PrimaryEmailAddr as Record<string, unknown> | undefined)
-    ?.Address || null,
-  primary_phone: (customer.PrimaryPhone as Record<string, unknown> | undefined)
-    ?.FreeFormNumber || null,
+  primary_email:
+    (customer.PrimaryEmailAddr as Record<string, unknown> | undefined)
+      ?.Address || null,
+  primary_phone:
+    (customer.PrimaryPhone as Record<string, unknown> | undefined)
+      ?.FreeFormNumber || null,
   active: customer.Active ?? null,
-  create_time: (customer.MetaData as Record<string, unknown> | undefined)?.CreateTime || null,
+  create_time:
+    (customer.MetaData as Record<string, unknown> | undefined)?.CreateTime ||
+    null,
   update_time:
-    (customer.MetaData as Record<string, unknown> | undefined)?.LastUpdatedTime || null,
-})
+    (customer.MetaData as Record<string, unknown> | undefined)
+      ?.LastUpdatedTime || null,
+});
 
 export async function GET(
   req: AuthenticatedMedusaRequest,
-  res: MedusaResponse
+  res: MedusaResponse,
 ) {
-  const config = getQuickbooksConfig(getBaseUrl(req))
-  const quickbooksService: QuickbooksModuleService = req.scope.resolve(
-    QUICKBOOKS_MODULE
-  )
-  const query = req.scope.resolve(ContainerRegistrationKeys.QUERY) as QueryGraph
+  const config = getQuickbooksConfig(getBaseUrl(req));
+  const quickbooksService: QuickbooksModuleService =
+    req.scope.resolve(QUICKBOOKS_MODULE);
+  const query = req.scope.resolve(
+    ContainerRegistrationKeys.QUERY,
+  ) as QueryGraph;
 
   const medusaCustomersResponse = await query.graph({
     entity: "customer",
@@ -77,17 +81,19 @@ export async function GET(
       "created_at",
       "updated_at",
     ],
-  })
+  });
 
-  const medusaCustomers = medusaCustomersResponse.data ?? []
-  const medusaByEmail = new Map<string, Record<string, unknown>>()
+  const medusaCustomers = medusaCustomersResponse.data ?? [];
+  const medusaByEmail = new Map<string, Record<string, unknown>>();
 
   for (const customer of medusaCustomers) {
     const email =
-      typeof customer.email === "string" ? customer.email.trim().toLowerCase() : ""
+      typeof customer.email === "string"
+        ? customer.email.trim().toLowerCase()
+        : "";
 
     if (email) {
-      medusaByEmail.set(email, customer)
+      medusaByEmail.set(email, customer);
     }
   }
 
@@ -107,39 +113,39 @@ export async function GET(
         normalized: [],
         raw: [],
       },
-    })
+    });
   }
 
-  let connection = await quickbooksService.getConnection()
+  let connection: Awaited<
+    ReturnType<QuickbooksModuleService["getConnection"]>
+  > | null = null;
 
-  if (connection && connection.refresh_token && isConnectionExpired(connection)) {
-    try {
-      const refreshedToken = await refreshOauthToken(connection, config)
-
-      connection = await quickbooksService.upsertConnection(
-        toStoredConnection(refreshedToken, req.auth_context?.actor_id)
-      )
-    } catch (e) {
-      return res.status(200).json({
-        configured: true,
-        connected: false,
-        environment: config.environment,
-        medusa: {
-          count: medusaCustomers.length,
-          normalized: medusaCustomers.map(normalizeMedusaCustomer),
-          raw: medusaCustomers,
-        },
-        quickbooks: {
-          count: 0,
-          normalized: [],
-          raw: [],
-          error:
-            e instanceof Error
-              ? e.message
-              : "Unable to refresh QuickBooks token for customers.",
-        },
-      })
-    }
+  try {
+    ({ connection } = await getReadyQuickbooksConnection(
+      req.scope,
+      req.auth_context?.actor_id,
+      config,
+    ));
+  } catch (e) {
+    return res.status(200).json({
+      configured: true,
+      connected: false,
+      environment: config.environment,
+      medusa: {
+        count: medusaCustomers.length,
+        normalized: medusaCustomers.map(normalizeMedusaCustomer),
+        raw: medusaCustomers,
+      },
+      quickbooks: {
+        count: 0,
+        normalized: [],
+        raw: [],
+        error:
+          e instanceof Error
+            ? e.message
+            : "Unable to refresh QuickBooks token for customers.",
+      },
+    });
   }
 
   if (!connection?.access_token || !connection?.realm_id) {
@@ -157,30 +163,33 @@ export async function GET(
         normalized: [],
         raw: [],
       },
-    })
+    });
   }
 
   try {
-    const quickbooksCustomers = await findQuickbooksCustomers(connection, config)
+    const quickbooksCustomers = await findQuickbooksCustomers(
+      connection,
+      config,
+    );
     const normalizedQuickbooksCustomers = quickbooksCustomers.map(
-      normalizeQuickbooksCustomer
-    )
+      normalizeQuickbooksCustomer,
+    );
 
     const emailMatches = normalizedQuickbooksCustomers
       .map((customer) => {
         const email =
           typeof customer.primary_email === "string"
             ? customer.primary_email.trim().toLowerCase()
-            : ""
+            : "";
 
         if (!email) {
-          return null
+          return null;
         }
 
-        const medusaCustomer = medusaByEmail.get(email)
+        const medusaCustomer = medusaByEmail.get(email);
 
         if (!medusaCustomer) {
-          return null
+          return null;
         }
 
         return {
@@ -192,10 +201,12 @@ export async function GET(
             .join(" "),
           quickbooks_name:
             customer.display_name ||
-            [customer.given_name, customer.family_name].filter(Boolean).join(" "),
-        }
+            [customer.given_name, customer.family_name]
+              .filter(Boolean)
+              .join(" "),
+        };
       })
-      .filter(Boolean)
+      .filter(Boolean);
 
     return res.status(200).json({
       configured: true,
@@ -213,7 +224,7 @@ export async function GET(
         raw: quickbooksCustomers,
       },
       matches: emailMatches,
-    })
+    });
   } catch (e) {
     return res.status(200).json({
       configured: true,
@@ -234,6 +245,6 @@ export async function GET(
             ? e.message
             : "Unable to fetch QuickBooks customers.",
       },
-    })
+    });
   }
 }

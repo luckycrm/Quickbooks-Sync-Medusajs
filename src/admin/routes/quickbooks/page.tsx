@@ -1,8 +1,8 @@
-import { defineRouteConfig } from "@medusajs/admin-sdk"
-import { useMemo } from "react"
-import { useNavigate } from "react-router-dom"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Buildings, ArrowPathMini } from "@medusajs/icons"
+import { defineRouteConfig } from "@medusajs/admin-sdk";
+import { useMemo } from "react";
+import { useNavigate } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Buildings, ArrowPathMini } from "@medusajs/icons";
 import {
   Alert,
   Badge,
@@ -10,188 +10,141 @@ import {
   Container,
   Heading,
   StatusBadge,
+  Table,
   Text,
   toast,
-} from "@medusajs/ui"
+} from "@medusajs/ui";
 
-import { sdk } from "../../lib/client"
+import { sdk } from "../../lib/client";
+import {
+  StatCard,
+  SectionHeader,
+  formatDateTime,
+} from "../../components/quickbooks-ui";
 
 type QuickbooksStatusResponse = {
-  configured: boolean
-  connected: boolean
-  missingKeys?: string[]
-  environment?: string
-  redirectUri?: string
-  realmId?: string
-  expiresAt?: string
-  connectedAt?: string
-  company?: Record<string, unknown> | null
-  selectedIncomeAccountId?: string | null
-  selectedIncomeAccountName?: string | null
-  companyError?: string
-  error?: string
-}
+  configured: boolean;
+  connected: boolean;
+  missingKeys?: string[];
+  environment?: string;
+  redirectUri?: string;
+  realmId?: string;
+  expiresAt?: string;
+  connectedAt?: string;
+  company?: Record<string, unknown> | null;
+  selectedIncomeAccountId?: string | null;
+  selectedIncomeAccountName?: string | null;
+  companyError?: string;
+  error?: string;
+};
 
 type ProductVariantSummary = {
-  quickbooks_item_id: string | null
-  quickbooks_image_count: number
-}
+  quickbooks_item_id: string | null;
+  quickbooks_image_count: number;
+};
 
 type UnifiedProductRow = {
-  id: string
-  medusa_product_id: string | null
-  title: string | null
-  status: string | null
-  availability: string[]
-  variant_count: number
-  matched_variant_count: number
-  unmatched_variant_count: number
-  image_count: number
-  quickbooks_image_count: number
-  variants: ProductVariantSummary[]
-}
+  id: string;
+  medusa_product_id: string | null;
+  title: string | null;
+  status: string | null;
+  availability: string[];
+  variant_count: number;
+  matched_variant_count: number;
+  unmatched_variant_count: number;
+  image_count: number;
+  quickbooks_image_count: number;
+  variants: ProductVariantSummary[];
+};
 
 type ProductsStatusResponse = {
-  configured: boolean
-  connected: boolean
-  environment?: string
-  realmId?: string
-  missingKeys?: string[]
+  configured: boolean;
+  connected: boolean;
+  environment?: string;
+  realmId?: string;
+  missingKeys?: string[];
   quickbooks?: {
-    error?: string
-  }
+    error?: string;
+  };
   summary: {
-    medusa_products: number
-    quickbooks_items: number
-    matched_variants: number
-    missing_variants: number
-    quickbooks_only_items: number
-  }
-  rows: UnifiedProductRow[]
-}
+    medusa_products: number;
+    quickbooks_items: number;
+    matched_variants: number;
+    missing_variants: number;
+    quickbooks_only_items: number;
+  };
+  rows: UnifiedProductRow[];
+};
 
 type OrderLink = {
-  id: string
-  medusa_order_id: string
-  quickbooks_sales_receipt_id: string | null
-  quickbooks_invoice_id: string | null
-  sync_type: string | null
-  last_synced_at: string | null
-}
+  id: string;
+  medusa_order_id: string;
+  quickbooks_sales_receipt_id: string | null;
+  quickbooks_invoice_id: string | null;
+  sync_type: string | null;
+  last_synced_at: string | null;
+};
 
 type OrdersStatusResponse = {
-  order_links: OrderLink[]
-  count: number
-}
+  order_links: OrderLink[];
+  count: number;
+};
 
 type CustomerSummary = {
-  id: string | null
-  active?: boolean | null
-}
+  id: string | null;
+  active?: boolean | null;
+};
 
 type MatchSummary = {
-  email?: string | null
-  medusa_customer_id?: string | null
-  quickbooks_customer_id?: string | null
-}
+  email?: string | null;
+  medusa_customer_id?: string | null;
+  quickbooks_customer_id?: string | null;
+};
 
 type CustomersStatusResponse = {
-  configured: boolean
-  connected: boolean
-  environment?: string
-  realmId?: string
-  missingKeys?: string[]
+  configured: boolean;
+  connected: boolean;
+  environment?: string;
+  realmId?: string;
+  missingKeys?: string[];
   medusa: {
-    count: number
-    normalized: CustomerSummary[]
-  }
+    count: number;
+    normalized: CustomerSummary[];
+  };
   quickbooks: {
-    count: number
-    normalized: CustomerSummary[]
-    error?: string
-  }
-  matches?: MatchSummary[]
-}
+    count: number;
+    normalized: CustomerSummary[];
+    error?: string;
+  };
+  matches?: MatchSummary[];
+};
 
 type ProductSyncResponse = {
-  created?: number
-  updated?: number
-  skipped?: number
-}
+  created?: number;
+  updated?: number;
+  skipped?: number;
+};
 
 type OrderSyncResponse = {
-  synced?: number
-  skipped?: number
-}
+  synced?: number;
+  skipped?: number;
+};
 
 type CustomerSyncResponse = {
-  created: number
-  updated: number
-  skipped: number
-}
+  created: number;
+  updated: number;
+  skipped: number;
+};
 
 const asRecord = (value: unknown) => {
   if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>
+    return value as Record<string, unknown>;
   }
 
-  return null
-}
+  return null;
+};
 
-const asString = (value: unknown) => (typeof value === "string" ? value : null)
-
-const formatDateTime = (value?: string | null) => {
-  if (!value) {
-    return "-"
-  }
-
-  const date = new Date(value)
-
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-
-  return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`
-}
-
-const StatCard = ({
-  label,
-  value,
-  hint,
-}: {
-  label: string
-  value: string | number
-  hint?: string
-}) => (
-  <div className="rounded-md border border-ui-border-base bg-ui-bg-base p-4">
-    <Text size="xsmall" className="text-ui-fg-subtle">
-      {label}
-    </Text>
-    <Text size="large" weight="plus" className="mt-2">
-      {value}
-    </Text>
-    {hint ? (
-      <Text size="xsmall" className="mt-1 text-ui-fg-subtle">
-        {hint}
-      </Text>
-    ) : null}
-  </div>
-)
-
-const SectionHeader = ({
-  title,
-  description,
-}: {
-  title: string
-  description: string
-}) => (
-  <div className="flex flex-col gap-y-1">
-    <Heading level="h2">{title}</Heading>
-    <Text size="small" className="text-ui-fg-subtle">
-      {description}
-    </Text>
-  </div>
-)
+const asString = (value: unknown) => (typeof value === "string" ? value : null);
 
 const QuickLinkCard = ({
   title,
@@ -199,10 +152,10 @@ const QuickLinkCard = ({
   badge,
   onClick,
 }: {
-  title: string
-  description: string
-  badge?: string
-  onClick: () => void
+  title: string;
+  description: string;
+  badge?: string;
+  onClick: () => void;
 }) => (
   <button
     type="button"
@@ -210,87 +163,128 @@ const QuickLinkCard = ({
     className="flex w-full flex-col items-start gap-y-2 rounded-md border border-ui-border-base bg-ui-bg-base p-4 text-left transition-colors hover:bg-ui-bg-subtle"
   >
     <div className="flex w-full items-start justify-between gap-3">
-      <Text weight="plus">{title}</Text>
+      <Text size="small" leading="compact" weight="plus">
+        {title}
+      </Text>
       {badge ? <Badge size="2xsmall">{badge}</Badge> : null}
     </div>
-    <Text size="small" className="text-ui-fg-subtle">
+    <Text size="small" leading="compact" className="text-ui-fg-subtle">
       {description}
     </Text>
   </button>
-)
+);
 
-const DashboardList = ({
+type OverviewRow = {
+  key: string;
+  title: string;
+  subtitle?: string;
+  badge?: string;
+  tone?: "green" | "orange" | "red" | "grey" | "blue";
+};
+
+const OverviewTable = ({
   empty,
-  items,
+  columnLabel,
+  statusLabel,
+  rows,
 }: {
-  empty: string
-  items: Array<{
-    key: string
-    title: string
-    subtitle?: string
-    badge?: string
-    tone?: "green" | "orange" | "red" | "grey" | "blue"
-  }>
+  empty: string;
+  columnLabel: string;
+  statusLabel: string;
+  rows: OverviewRow[];
 }) => {
-  if (!items.length) {
+  if (!rows.length) {
     return (
-      <Text size="small" className="text-ui-fg-subtle">
-        {empty}
-      </Text>
-    )
+      <div className="px-6 py-8">
+        <Text size="small" leading="compact" className="text-ui-fg-subtle">
+          {empty}
+        </Text>
+      </div>
+    );
   }
 
   return (
-    <div className="divide-y divide-ui-border-base">
-      {items.map((item) => (
-        <div key={item.key} className="flex items-start justify-between gap-3 py-4 first:pt-0 last:pb-0">
-          <div className="min-w-0">
-            <Text size="small" weight="plus">
-              {item.title}
-            </Text>
-            {item.subtitle ? (
-              <Text size="xsmall" className="mt-1 text-ui-fg-subtle">
-                {item.subtitle}
-              </Text>
-            ) : null}
-          </div>
-          {item.badge ? (
-            <Badge size="2xsmall" color={item.tone || "grey"}>
-              {item.badge}
-            </Badge>
-          ) : null}
-        </div>
-      ))}
-    </div>
-  )
-}
+    <Table>
+      <Table.Header>
+        <Table.Row>
+          <Table.HeaderCell>{columnLabel}</Table.HeaderCell>
+          <Table.HeaderCell className="text-right">
+            {statusLabel}
+          </Table.HeaderCell>
+        </Table.Row>
+      </Table.Header>
+      <Table.Body>
+        {rows.map((row) => (
+          <Table.Row key={row.key}>
+            <Table.Cell>
+              <div className="flex min-w-0 flex-col py-1">
+                <Text
+                  size="small"
+                  leading="compact"
+                  weight="plus"
+                  className="truncate"
+                >
+                  {row.title}
+                </Text>
+                {row.subtitle ? (
+                  <Text
+                    size="xsmall"
+                    leading="compact"
+                    className="truncate text-ui-fg-subtle"
+                  >
+                    {row.subtitle}
+                  </Text>
+                ) : null}
+              </div>
+            </Table.Cell>
+            <Table.Cell className="text-right">
+              {row.badge ? (
+                <Badge size="2xsmall" color={row.tone || "grey"}>
+                  {row.badge}
+                </Badge>
+              ) : null}
+            </Table.Cell>
+          </Table.Row>
+        ))}
+      </Table.Body>
+    </Table>
+  );
+};
 
 const QuickbooksPage = () => {
-  const navigate = useNavigate()
-  const queryClient = useQueryClient()
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const dashboardQuery = useQuery({
     queryKey: ["quickbooks-dashboard"],
     queryFn: async () => {
       const [status, products, orders, customers] = await Promise.all([
         sdk.client.fetch<QuickbooksStatusResponse>("/admin/quickbooks/status"),
-        sdk.client.fetch<ProductsStatusResponse>("/admin/quickbooks/products/status", {
-          query: { limit: 5, offset: 0 },
-        }),
-        sdk.client.fetch<OrdersStatusResponse>("/admin/quickbooks/orders/status", {
-          query: { limit: 5, offset: 0 },
-        }),
-        sdk.client.fetch<CustomersStatusResponse>("/admin/quickbooks/customers/status"),
-      ])
+        sdk.client.fetch<ProductsStatusResponse>(
+          "/admin/quickbooks/products/status",
+          {
+            query: { limit: 5 },
+          },
+        ),
+        sdk.client.fetch<OrdersStatusResponse>(
+          "/admin/quickbooks/orders/status",
+          {
+            query: { page: { limit: 5, offset: 0 } },
+          },
+        ),
+        sdk.client.fetch<CustomersStatusResponse>(
+          "/admin/quickbooks/customers/status",
+        ),
+      ]);
 
       return {
         status,
         products,
         orders,
         customers,
-      }
+      };
     },
-  })
+  });
 
   const invalidateDashboard = async () => {
     await Promise.all([
@@ -298,8 +292,8 @@ const QuickbooksPage = () => {
       queryClient.invalidateQueries({ queryKey: ["quickbooks-products"] }),
       queryClient.invalidateQueries({ queryKey: ["quickbooks-orders"] }),
       queryClient.invalidateQueries({ queryKey: ["quickbooks-customers"] }),
-    ])
-  }
+    ]);
+  };
 
   const syncProductsMutation = useMutation({
     mutationFn: async () =>
@@ -309,14 +303,14 @@ const QuickbooksPage = () => {
       }),
     onSuccess: async (result) => {
       toast.success(
-        `Products synced. Created ${result.created || 0}, updated ${result.updated || 0}.`
-      )
-      await invalidateDashboard()
+        `Products synced. Created ${result.created || 0}, updated ${result.updated || 0}.`,
+      );
+      await invalidateDashboard();
     },
     onError: (error: any) => {
-      toast.error(error?.message || "Unable to sync products")
+      toast.error(error?.message || "Unable to sync products");
     },
-  })
+  });
 
   const syncOrdersMutation = useMutation({
     mutationFn: async () =>
@@ -326,108 +320,118 @@ const QuickbooksPage = () => {
       }),
     onSuccess: async (result) => {
       toast.success(
-        `Orders synced. Synced ${result.synced || 0}, skipped ${result.skipped || 0}.`
-      )
-      await invalidateDashboard()
+        `Orders synced. Synced ${result.synced || 0}, skipped ${result.skipped || 0}.`,
+      );
+      await invalidateDashboard();
     },
     onError: (error: any) => {
-      toast.error(error?.message || "Unable to sync orders")
+      toast.error(error?.message || "Unable to sync orders");
     },
-  })
+  });
 
   const syncCustomersMutation = useMutation({
-    mutationFn: async () => {
-      const response = await fetch("/admin/quickbooks/customers/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ direction: "medusa_to_quickbooks" }),
-      })
-
-      const payload = (await response.json()) as CustomerSyncResponse
-
-      if (!response.ok) {
-        throw new Error("Unable to sync customers")
-      }
-
-      return payload
-    },
+    mutationFn: async () =>
+      sdk.client.fetch<CustomerSyncResponse>(
+        "/admin/quickbooks/customers/sync",
+        {
+          method: "POST",
+          body: { direction: "medusa_to_quickbooks" },
+        },
+      ),
     onSuccess: async (result) => {
       toast.success(
-        `Customers synced. Created ${result.created}, updated ${result.updated}, skipped ${result.skipped}.`
-      )
-      await invalidateDashboard()
+        `Customers synced. Created ${result.created}, updated ${result.updated}, skipped ${result.skipped}.`,
+      );
+      await invalidateDashboard();
     },
     onError: (error: any) => {
-      toast.error(error?.message || "Unable to sync customers")
+      toast.error(error?.message || "Unable to sync customers");
     },
-  })
+  });
 
-  const data = dashboardQuery.data
+  const data = dashboardQuery.data;
 
   const companyName = useMemo(() => {
-    const company = asRecord(data?.status.company)
+    const company = asRecord(data?.status.company);
 
     return (
       asString(company?.CompanyName) ||
       asString(company?.LegalName) ||
       "QuickBooks company"
-    )
-  }, [data?.status.company])
+    );
+  }, [data?.status.company]);
 
-  const unmatchedProducts = useMemo(() => {
+  const unmatchedProducts = useMemo<OverviewRow[]>(() => {
     return (data?.products.rows || [])
-      .filter((row) => row.unmatched_variant_count > 0 || row.quickbooks_image_count === 0)
+      .filter(
+        (row) =>
+          row.unmatched_variant_count > 0 || row.quickbooks_image_count === 0,
+      )
       .slice(0, 5)
       .map((row) => ({
         key: row.id,
         title: row.title || "Untitled product",
-        subtitle: `${row.matched_variant_count}/${row.variant_count} variants matched, ${row.quickbooks_image_count} QuickBooks images`,
+        subtitle: `${row.matched_variant_count}/${row.variant_count} variants matched • ${row.quickbooks_image_count} QuickBooks images`,
         badge:
           row.unmatched_variant_count > 0
             ? `${row.unmatched_variant_count} missing`
             : "Images",
-        tone: row.unmatched_variant_count > 0 ? ("orange" as const) : ("grey" as const),
-      }))
-  }, [data?.products.rows])
+        tone:
+          row.unmatched_variant_count > 0
+            ? ("orange" as const)
+            : ("grey" as const),
+      }));
+  }, [data?.products.rows]);
 
-  const recentOrders = useMemo(() => {
+  const recentOrders = useMemo<OverviewRow[]>(() => {
     return (data?.orders.order_links || []).slice(0, 5).map((order) => ({
       key: order.id,
       title: order.medusa_order_id,
       subtitle: `QuickBooks ${order.quickbooks_sales_receipt_id || order.quickbooks_invoice_id || "pending"} • ${formatDateTime(order.last_synced_at)}`,
       badge: order.sync_type || "pending",
-      tone: order.quickbooks_sales_receipt_id || order.quickbooks_invoice_id ? ("green" as const) : ("grey" as const),
-    }))
-  }, [data?.orders.order_links])
+      tone:
+        order.quickbooks_sales_receipt_id || order.quickbooks_invoice_id
+          ? ("green" as const)
+          : ("grey" as const),
+    }));
+  }, [data?.orders.order_links]);
 
-  const customerMatches = useMemo(() => {
+  const customerMatches = useMemo<OverviewRow[]>(() => {
     return (data?.customers.matches || []).slice(0, 5).map((match) => ({
       key: `${match.medusa_customer_id}-${match.quickbooks_customer_id}-${match.email}`,
       title: match.email || "Unknown email",
       subtitle: `Medusa ${match.medusa_customer_id || "-"} • QuickBooks ${match.quickbooks_customer_id || "-"}`,
       badge: "Matched",
       tone: "green" as const,
-    }))
-  }, [data?.customers.matches])
+    }));
+  }, [data?.customers.matches]);
 
   const inactiveQuickbooksCustomers = useMemo(() => {
     return (
       data?.customers.quickbooks.normalized.filter(
-        (customer) => customer.active === false
+        (customer) => customer.active === false,
       ).length || 0
-    )
-  }, [data?.customers.quickbooks.normalized])
+    );
+  }, [data?.customers.quickbooks.normalized]);
 
-  const missingConfigKeys = data?.status.missingKeys || data?.products.missingKeys || data?.customers.missingKeys || []
+  const missingConfigKeys =
+    data?.status.missingKeys ||
+    data?.products.missingKeys ||
+    data?.customers.missingKeys ||
+    [];
 
   return (
     <div className="flex flex-col gap-y-4">
       <Container className="p-0 overflow-hidden">
         <div className="flex flex-col gap-y-4 px-6 py-4">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div>
+            <div className="flex flex-col gap-y-1">
               <Heading level="h1">QuickBooks</Heading>
-              <Text className="mt-1 text-ui-fg-subtle">
+              <Text
+                size="small"
+                leading="compact"
+                className="text-ui-fg-subtle"
+              >
                 Manage the QuickBooks plugin from one place: connection health,
                 sync coverage, and the most important actions for products,
                 orders, and customers.
@@ -516,7 +520,7 @@ const QuickbooksPage = () => {
           <div className="flex flex-col gap-y-4 px-6 py-4">
             <SectionHeader
               title="Quick Actions"
-              description="Run the plugin’s most important sync operations or jump straight into the detailed pages."
+              description="Run the plugin's most important sync operations or jump straight into the detailed pages."
             />
 
             <div className="flex flex-wrap gap-2">
@@ -611,13 +615,13 @@ const QuickbooksPage = () => {
               title="Product Coverage"
               description="Items that still need attention before the catalog is fully aligned."
             />
-            <div className="mt-4">
-              <DashboardList
-                empty="No product issues detected in the current sample."
-                items={unmatchedProducts}
-              />
-            </div>
           </div>
+          <OverviewTable
+            empty="No product issues detected in the current sample."
+            columnLabel="Product"
+            statusLabel="Status"
+            rows={unmatchedProducts}
+          />
         </Container>
 
         <Container className="p-0 overflow-hidden">
@@ -626,13 +630,13 @@ const QuickbooksPage = () => {
               title="Recent Orders"
               description="Latest linked orders that have been pushed toward QuickBooks."
             />
-            <div className="mt-4">
-              <DashboardList
-                empty="No synced order links yet."
-                items={recentOrders}
-              />
-            </div>
           </div>
+          <OverviewTable
+            empty="No synced order links yet."
+            columnLabel="Order"
+            statusLabel="Sync"
+            rows={recentOrders}
+          />
         </Container>
 
         <Container className="p-0 overflow-hidden">
@@ -641,26 +645,26 @@ const QuickbooksPage = () => {
               title="Customer Matches"
               description="Email-based customer links currently detected between both systems."
             />
-            <div className="mt-4">
-              <DashboardList
-                empty="No customer matches found yet."
-                items={customerMatches}
-              />
-            </div>
           </div>
+          <OverviewTable
+            empty="No customer matches found yet."
+            columnLabel="Customer"
+            statusLabel="Link"
+            rows={customerMatches}
+          />
         </Container>
       </div>
     </div>
-  )
-}
+  );
+};
 
 export const config = defineRouteConfig({
   label: "QuickBooks",
   icon: Buildings,
-})
+});
 
 export const handle = {
   breadcrumb: () => "QuickBooks",
-}
+};
 
-export default QuickbooksPage
+export default QuickbooksPage;

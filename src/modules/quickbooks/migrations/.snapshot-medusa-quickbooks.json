@@ -147,6 +147,42 @@
           "nullable": true,
           "mappedType": "text"
         },
+        "quickbooks_price_currency": {
+          "name": "quickbooks_price_currency",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "mappedType": "text"
+        },
+        "quickbooks_order_tax_treatment": {
+          "name": "quickbooks_order_tax_treatment",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "mappedType": "text"
+        },
+        "quickbooks_order_tax_code_id": {
+          "name": "quickbooks_order_tax_code_id",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "mappedType": "text"
+        },
+        "quickbooks_order_tax_code_name": {
+          "name": "quickbooks_order_tax_code_name",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "mappedType": "text"
+        },
         "updated_by": {
           "name": "updated_by",
           "type": "text",
@@ -203,7 +239,9 @@
         },
         {
           "keyName": "quickbooks_connection_pkey",
-          "columnNames": ["id"],
+          "columnNames": [
+            "id"
+          ],
           "composite": false,
           "constraint": true,
           "primary": true,
@@ -240,7 +278,7 @@
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
-          "nullable": true,
+          "nullable": false,
           "mappedType": "text"
         },
         "quickbooks_sync_token": {
@@ -345,7 +383,9 @@
         },
         {
           "keyName": "quickbooks_customer_link_pkey",
-          "columnNames": ["id"],
+          "columnNames": [
+            "id"
+          ],
           "composite": false,
           "constraint": true,
           "primary": true,
@@ -496,7 +536,9 @@
         },
         {
           "keyName": "quickbooks_order_link_pkey",
-          "columnNames": ["id"],
+          "columnNames": [
+            "id"
+          ],
           "composite": false,
           "constraint": true,
           "primary": true,

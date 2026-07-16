@@ -1,7 +1,7 @@
 import type {
   AuthenticatedMedusaRequest,
   MedusaResponse,
-} from "@medusajs/framework/http"
+} from "@medusajs/framework/http";
 
 import {
   createAuthorizationUrl,
@@ -9,32 +9,32 @@ import {
   getBaseUrl,
   getQuickbooksConfig,
   signState,
-} from "../../../../lib/quickbooks"
+} from "../../../../lib/quickbooks";
 
 export async function GET(
   req: AuthenticatedMedusaRequest,
-  res: MedusaResponse
+  res: MedusaResponse,
 ) {
-  const config = getQuickbooksConfig(getBaseUrl(req))
+  const config = getQuickbooksConfig(getBaseUrl(req));
 
   if (!config.configured) {
     return res.status(400).json({
       configured: false,
       missingKeys: config.missingKeys,
-    })
+    });
   }
 
-  const oauthClient = createOauthClient(config)
+  const oauthClient = createOauthClient(config);
   const state = signState({
     actorId: req.auth_context?.actor_id || null,
-    returnTo: "/app/settings/quickbooks",
+    returnTo: "/app/quickbooks/settings",
     ts: Date.now(),
-  })
+  });
 
-  const url = createAuthorizationUrl(oauthClient, state)
+  const url = createAuthorizationUrl(oauthClient, state);
 
   return res.status(200).json({
     configured: true,
     url,
-  })
+  });
 }

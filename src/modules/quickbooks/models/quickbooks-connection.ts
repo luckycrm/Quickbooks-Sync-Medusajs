@@ -1,4 +1,4 @@
-import { model } from "@medusajs/framework/utils"
+import { model } from "@medusajs/framework/utils";
 
 const QuickbooksConnection = model.define("quickbooks_connection", {
   id: model.id().primaryKey(),
@@ -16,7 +16,11 @@ const QuickbooksConnection = model.define("quickbooks_connection", {
   disconnected_at: model.dateTime().nullable(),
   quickbooks_product_income_account_id: model.text().nullable(),
   quickbooks_product_income_account_name: model.text().nullable(),
+  quickbooks_price_currency: model.text().nullable(),
+  quickbooks_order_tax_treatment: model.text().nullable(),
+  quickbooks_order_tax_code_id: model.text().nullable(),
+  quickbooks_order_tax_code_name: model.text().nullable(),
   updated_by: model.text().nullable(),
-})
+});
 
-export default QuickbooksConnection
+export default QuickbooksConnection;

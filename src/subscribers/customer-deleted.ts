@@ -13,7 +13,4 @@ export default async function customerDeletedHandler({
 
 export const config: SubscriberConfig = {
   event: "customer.deleted",
-  context: {
-    subscriberId: "quickbooks-sync-customer-deleted-handler",
-  },
 }
