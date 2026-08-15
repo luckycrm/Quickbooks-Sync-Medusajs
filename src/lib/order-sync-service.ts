@@ -212,6 +212,7 @@ function buildQuickbooksTransactionPayload(input: {
   quickbooksCustomerId: string | null;
   quickbooksItems: Record<string, unknown>[];
   taxSettings: OrderTaxSettings;
+  docNumberPrefix?: string | null;
 }) {
   const orderRecord = asRecord(input.order);
 
@@ -288,7 +289,7 @@ function buildQuickbooksTransactionPayload(input: {
   // Honored when custom transaction numbers are enabled in QuickBooks.
   const displayId = orderRecord?.display_id;
   if (displayId !== undefined && displayId !== null) {
-    payload.DocNumber = String(displayId);
+    payload.DocNumber = `${input.docNumberPrefix || ""}${String(displayId)}`;
   }
 
   if (input.quickbooksCustomerId) {
@@ -867,6 +868,10 @@ export async function syncMedusaOrderToQuickbooks(
     quickbooksCustomerId,
     quickbooksItems,
     taxSettings,
+    docNumberPrefix: asString(
+      (connection as Record<string, unknown>)
+        .quickbooks_order_doc_number_prefix,
+    ),
   });
 
   // QuickBooks rejects taxable transactions with more than 750 lines — fail

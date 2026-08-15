@@ -158,6 +158,8 @@ export async function GET(
       connection.quickbooks_order_tax_treatment || null,
     selectedOrderTaxCodeId: connection.quickbooks_order_tax_code_id || null,
     selectedOrderTaxCodeName: connection.quickbooks_order_tax_code_name || null,
+    selectedOrderDocNumberPrefix:
+      connection.quickbooks_order_doc_number_prefix || null,
     taxCodes: taxCodes
       .filter((code) => code.Active !== false)
       .map((code) => ({

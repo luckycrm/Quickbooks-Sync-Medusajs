@@ -22,6 +22,7 @@ type UpsertConnectionInput = {
   quickbooks_order_tax_treatment?: string | null;
   quickbooks_order_tax_code_id?: string | null;
   quickbooks_order_tax_code_name?: string | null;
+  quickbooks_order_doc_number_prefix?: string | null;
   updated_by?: string | null;
 };
 

@@ -20,6 +20,7 @@ const QuickbooksConnection = model.define("quickbooks_connection", {
   quickbooks_order_tax_treatment: model.text().nullable(),
   quickbooks_order_tax_code_id: model.text().nullable(),
   quickbooks_order_tax_code_name: model.text().nullable(),
+  quickbooks_order_doc_number_prefix: model.text().nullable(),
   updated_by: model.text().nullable(),
 });
 

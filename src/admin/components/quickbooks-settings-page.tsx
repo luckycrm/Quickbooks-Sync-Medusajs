@@ -46,6 +46,7 @@ type QuickbooksStatus = {
   selectedOrderTaxTreatment?: string | null;
   selectedOrderTaxCodeId?: string | null;
   selectedOrderTaxCodeName?: string | null;
+  selectedOrderDocNumberPrefix?: string | null;
   taxCodes?: Array<{
     id?: string | null;
     name?: string | null;
@@ -245,6 +246,8 @@ const QuickbooksSettingsPage = () => {
   const [selectedOrderTaxTreatment, setSelectedOrderTaxTreatment] =
     useState("");
   const [selectedOrderTaxCodeId, setSelectedOrderTaxCodeId] = useState("");
+  const [selectedOrderDocNumberPrefix, setSelectedOrderDocNumberPrefix] =
+    useState("");
   const [companyForm, setCompanyForm] = useState<CompanyFormState>(() =>
     companyToForm(null),
   );
@@ -344,6 +347,12 @@ const QuickbooksSettingsPage = () => {
     setSelectedOrderTaxCodeId(status?.selectedOrderTaxCodeId || "");
   }, [status?.selectedOrderTaxCodeId]);
 
+  useEffect(() => {
+    setSelectedOrderDocNumberPrefix(
+      status?.selectedOrderDocNumberPrefix || "",
+    );
+  }, [status?.selectedOrderDocNumberPrefix]);
+
   const connectMutation = useMutation({
     mutationFn: () =>
       sdk.client.fetch<{ url?: string; missingKeys?: string[] }>(
@@ -403,6 +412,7 @@ const QuickbooksSettingsPage = () => {
       priceCurrency: string;
       orderTaxTreatment: string;
       orderTaxCodeId: string;
+      orderDocNumberPrefix: string;
     }) =>
       sdk.client.fetch<{ message?: string }>("/admin/quickbooks/settings", {
         method: "POST",
@@ -419,6 +429,7 @@ const QuickbooksSettingsPage = () => {
           ...(input.orderTaxCodeId
             ? { quickbooks_order_tax_code_id: input.orderTaxCodeId }
             : {}),
+          quickbooks_order_doc_number_prefix: input.orderDocNumberPrefix,
         },
       }),
     onSuccess: async () => {
@@ -460,6 +471,7 @@ const QuickbooksSettingsPage = () => {
       orderTaxTreatment: selectedOrderTaxTreatment,
       orderTaxCodeId:
         selectedOrderTaxTreatment === "exclusive" ? selectedOrderTaxCodeId : "",
+      orderDocNumberPrefix: selectedOrderDocNumberPrefix,
     });
   };
 
@@ -686,6 +698,28 @@ const QuickbooksSettingsPage = () => {
 
                     <div className="flex max-w-md flex-col gap-2">
                       <Label size="small" weight="plus">
+                        Order number prefix
+                      </Label>
+                      <Input
+                        value={selectedOrderDocNumberPrefix}
+                        onChange={(event) =>
+                          setSelectedOrderDocNumberPrefix(event.target.value)
+                        }
+                        placeholder="Example: BTP-"
+                        maxLength={30}
+                      />
+                      <Text
+                        size="xsmall"
+                        leading="compact"
+                        className="text-ui-fg-subtle"
+                      >
+                        Added before the Medusa order number sent as the
+                        QuickBooks document number. Leave blank for no prefix.
+                      </Text>
+                    </div>
+
+                    <div className="flex max-w-md flex-col gap-2">
+                      <Label size="small" weight="plus">
                         Order amounts are
                       </Label>
                       <Select
@@ -764,7 +798,8 @@ const QuickbooksSettingsPage = () => {
                         disabled={
                           !selectedIncomeAccountId &&
                           !selectedPriceCurrency &&
-                          !selectedOrderTaxTreatment
+                          !selectedOrderTaxTreatment &&
+                          !selectedOrderDocNumberPrefix
                         }
                       >
                         Save Sync Settings

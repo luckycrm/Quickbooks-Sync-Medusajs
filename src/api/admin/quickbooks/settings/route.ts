@@ -53,11 +53,23 @@ export async function POST(
   const hasOrderTaxFields =
     !!asString(body.quickbooks_order_tax_treatment) ||
     !!asString(body.quickbooks_order_tax_code_id);
+  const hasDocNumberPrefix = Object.prototype.hasOwnProperty.call(
+    body,
+    "quickbooks_order_doc_number_prefix",
+  );
+  const docNumberPrefix = asString(
+    body.quickbooks_order_doc_number_prefix,
+  );
 
-  if (!incomeAccountId && !priceCurrency && !hasOrderTaxFields) {
+  if (
+    !incomeAccountId &&
+    !priceCurrency &&
+    !hasOrderTaxFields &&
+    !hasDocNumberPrefix
+  ) {
     return res.status(400).json({
       message:
-        "Provide at least one setting: quickbooks_product_income_account_id, quickbooks_price_currency, quickbooks_order_tax_treatment or quickbooks_order_tax_code_id.",
+        "Provide at least one setting: quickbooks_product_income_account_id, quickbooks_price_currency, quickbooks_order_tax_treatment, quickbooks_order_tax_code_id or quickbooks_order_doc_number_prefix.",
     });
   }
 
@@ -71,7 +83,6 @@ export async function POST(
     body.quickbooks_order_tax_treatment,
   ).toLowerCase();
   const orderTaxCodeId = asString(body.quickbooks_order_tax_code_id);
-
   if (
     orderTaxTreatment &&
     !["out_of_scope", "inclusive", "exclusive"].includes(orderTaxTreatment)
@@ -79,6 +90,13 @@ export async function POST(
     return res.status(400).json({
       message:
         "quickbooks_order_tax_treatment must be one of: out_of_scope, inclusive, exclusive.",
+    });
+  }
+
+  if (docNumberPrefix.length > 30) {
+    return res.status(400).json({
+      message:
+        "quickbooks_order_doc_number_prefix must be 30 characters or fewer.",
     });
   }
 
@@ -151,6 +169,9 @@ export async function POST(
         ? taxCode.Name
         : null
       : connection.quickbooks_order_tax_code_name || null,
+    quickbooks_order_doc_number_prefix: hasDocNumberPrefix
+      ? docNumberPrefix || null
+      : connection.quickbooks_order_doc_number_prefix || null,
     updated_by: req.auth_context?.actor_id ?? null,
   });
 
@@ -166,5 +187,7 @@ export async function POST(
       updatedConnection.quickbooks_order_tax_code_id,
     quickbooks_order_tax_code_name:
       updatedConnection.quickbooks_order_tax_code_name,
+    quickbooks_order_doc_number_prefix:
+      updatedConnection.quickbooks_order_doc_number_prefix,
   });
 }
