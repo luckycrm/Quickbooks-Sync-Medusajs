@@ -1,6 +1,6 @@
 {
   "name": "quickbooks-sync-medusajs",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Synchronize Medusa.js orders , customers and products with QuickBooks Online.",
   "license": "MIT",
   "files": [

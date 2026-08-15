@@ -1201,6 +1201,42 @@ export async function createQuickbooksInvoice(
   );
 }
 
+export async function createQuickbooksPayment(
+  connection: QuickbooksConnectionRef,
+  config: ReturnType<typeof getQuickbooksConfig>,
+  payload: Record<string, unknown>,
+) {
+  const client = createQuickbooksClient(connection, config);
+
+  return await promisifyEntityCall((callback) =>
+    client.createPayment(payload, callback),
+  );
+}
+
+export async function getQuickbooksPayment(
+  connection: QuickbooksConnectionRef,
+  config: ReturnType<typeof getQuickbooksConfig>,
+  id: string,
+) {
+  const client = createQuickbooksClient(connection, config);
+
+  return await promisifyEntityCall((callback) =>
+    client.getPayment(id, callback),
+  );
+}
+
+export async function updateQuickbooksPayment(
+  connection: QuickbooksConnectionRef,
+  config: ReturnType<typeof getQuickbooksConfig>,
+  payload: Record<string, unknown>,
+) {
+  const client = createQuickbooksClient(connection, config);
+
+  return await promisifyEntityCall((callback) =>
+    client.updatePayment(payload, callback),
+  );
+}
+
 // QuickBooks Batch API: up to 30 operations per request. Entries follow the
 // BatchItemRequest shape, e.g. { bId: "1", operation: "create", Item: {...} }.
 export async function batchQuickbooksRequests(

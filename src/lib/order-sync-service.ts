@@ -2,6 +2,10 @@ import { QUICKBOOKS_MODULE } from "../modules/quickbooks";
 import type QuickbooksModuleService from "../modules/quickbooks/service";
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
 import { getReadyQuickbooksConnection } from "./connection";
+import {
+  extractQuickbooksErrorMessage,
+  syncMedusaCustomerToQuickbooks,
+} from "./customer-sync-service";
 import { syncMedusaProductToQuickbooks } from "./product-sync-service";
 import {
   createQuickbooksInvoice,
@@ -10,7 +14,10 @@ import {
   findQuickbooksItems,
   getQuickbooksConfig,
   getQuickbooksInvoice,
+  createQuickbooksPayment,
+  getQuickbooksPayment,
   getQuickbooksSalesReceipt,
+  updateQuickbooksPayment,
   updateQuickbooksInvoice,
   updateQuickbooksSalesReceipt,
 } from "./quickbooks";
@@ -327,6 +334,7 @@ async function getMedusaOrderById(scope: ScopeLike, orderId: string) {
         "display_id",
         "version",
         "status",
+        "payment_status",
         "currency_code",
         "customer_id",
         "email",
@@ -348,6 +356,11 @@ async function getMedusaOrderById(scope: ScopeLike, orderId: string) {
         "items.product_title",
         "shipping_methods.*",
         "summary.*",
+        "payment_collections.id",
+        "payment_collections.payments.id",
+        "payment_collections.payments.amount",
+        "payment_collections.payments.captured_at",
+        "payment_collections.payments.captures.amount",
         "item_subtotal",
         "shipping_subtotal",
         "subtotal",
@@ -425,6 +438,7 @@ function computeOrderHash(order: Record<string, unknown>): string {
     display_id: orderRecord?.display_id,
     version: orderRecord?.version,
     status: orderRecord?.status,
+    payment_status: orderRecord?.payment_status,
     items: items.map((item) => ({
       id: asString(asRecord(item)?.id),
       quantity: getOrderItemQuantity(asRecord(item) || {}),
@@ -437,9 +451,145 @@ function computeOrderHash(order: Record<string, unknown>): string {
       shipping_total: summary?.shipping_total,
       discount_total: summary?.discount_total,
     },
+    payments: (Array.isArray(orderRecord?.payment_collections)
+      ? orderRecord.payment_collections
+      : []
+    ).map((collection) => {
+      const collectionRecord = asRecord(collection);
+      const payments = Array.isArray(collectionRecord?.payments)
+        ? collectionRecord.payments
+        : [];
+
+      return payments.map((payment) => {
+        const paymentRecord = asRecord(payment);
+        const captures = Array.isArray(paymentRecord?.captures)
+          ? paymentRecord.captures
+          : [];
+
+        return {
+          id: paymentRecord?.id,
+          amount: paymentRecord?.amount,
+          captured_at: paymentRecord?.captured_at,
+          captures: captures.map((capture) => asRecord(capture)?.amount),
+        };
+      });
+    }),
   };
 
   return JSON.stringify(hashData);
+}
+
+function getCapturedPaymentAmount(order: Record<string, unknown>) {
+  const orderRecord = asRecord(order);
+  const collections = Array.isArray(orderRecord?.payment_collections)
+    ? orderRecord.payment_collections
+    : [];
+
+  return roundAmount(
+    collections.reduce((collectionTotal, collection) => {
+      const collectionRecord = asRecord(collection);
+      const payments = Array.isArray(collectionRecord?.payments)
+        ? collectionRecord.payments
+        : [];
+
+      return (
+        collectionTotal +
+        payments.reduce((paymentTotal, payment) => {
+          const paymentRecord = asRecord(payment);
+          const captures = Array.isArray(paymentRecord?.captures)
+            ? paymentRecord.captures
+            : [];
+
+          if (captures.length > 0) {
+            return (
+              paymentTotal +
+              captures.reduce(
+                (captureTotal, capture) =>
+                  captureTotal + (asNumber(asRecord(capture)?.amount) ?? 0),
+                0,
+              )
+            );
+          }
+
+          return paymentTotal +
+            (paymentRecord?.captured_at
+              ? (asNumber(paymentRecord.amount) ?? 0)
+              : 0);
+        }, 0)
+      );
+    }, 0),
+  );
+}
+
+async function syncQuickbooksPaymentForOrder(input: {
+  connection: Parameters<typeof createQuickbooksPayment>[0];
+  config: ReturnType<typeof getQuickbooksConfig>;
+  order: Record<string, unknown>;
+  quickbooksCustomerId: string;
+  quickbooksInvoiceId: string;
+  existingPaymentId: string | null;
+}) {
+  const amount = getCapturedPaymentAmount(input.order);
+
+  if (amount <= 0) {
+    return null;
+  }
+
+  const orderId = asString(input.order.id) || "unknown";
+  const payload: Record<string, unknown> = {
+    TotalAmt: amount,
+    CustomerRef: { value: input.quickbooksCustomerId },
+    Line: [
+      {
+        Amount: amount,
+        LinkedTxn: [
+          {
+            TxnId: input.quickbooksInvoiceId,
+            TxnType: "Invoice",
+          },
+        ],
+      },
+    ],
+    TxnDate: formatQuickbooksDate(new Date()),
+    PrivateNote: `Medusa Order: ${orderId}`,
+  };
+
+  let payment: Record<string, unknown> | null = null;
+
+  if (input.existingPaymentId) {
+    const existingPayment = await getQuickbooksPayment(
+      input.connection,
+      input.config,
+      input.existingPaymentId,
+    );
+
+    if (existingPayment?.Id) {
+      payment = await updateQuickbooksPayment(input.connection, input.config, {
+        ...payload,
+        Id: existingPayment.Id,
+        SyncToken: existingPayment.SyncToken,
+        sparse: true,
+      });
+    }
+  }
+
+  if (!payment) {
+    payment = await createQuickbooksPayment(
+      input.connection,
+      input.config,
+      payload,
+    );
+  }
+
+  if (!payment?.Id) {
+    throw new Error("QuickBooks did not return a persisted payment.");
+  }
+
+  return {
+    quickbooks_payment_id: asString(payment.Id),
+    quickbooks_payment_sync_token: asString(payment.SyncToken),
+    quickbooks_payment_amount: amount,
+  };
 }
 
 type QuickbooksConnectionInput = {
@@ -656,12 +806,45 @@ export async function syncMedusaOrderToQuickbooks(
       scope,
       customerId,
     );
+
+    if (!quickbooksCustomerId) {
+      try {
+        const customerResult = await syncMedusaCustomerToQuickbooks(
+          scope,
+          customerId,
+        );
+
+        if (!customerResult.skipped) {
+          quickbooksCustomerId = asString(
+            (customerResult as Record<string, unknown>)
+              .quickbooks_customer_id,
+          );
+        }
+      } catch (error) {
+        console.error(
+          "[quickbooks-order-sync] failed to sync customer before order",
+          {
+            medusa_order_id: medusaOrderId,
+            medusa_customer_id: customerId,
+            error: extractQuickbooksErrorMessage(error),
+          },
+        );
+      }
+    }
   }
 
   const email = asString(orderRecord?.email);
 
   if (!quickbooksCustomerId && email) {
     quickbooksCustomerId = await findQuickbooksCustomerByEmail(scope, email);
+  }
+
+  if (!quickbooksCustomerId) {
+    return {
+      skipped: true,
+      reason:
+        "Cannot sync order because no QuickBooks customer could be resolved. Sync the order customer first and try again.",
+    };
   }
 
   const treatment = asString(
@@ -707,10 +890,15 @@ export async function syncMedusaOrderToQuickbooks(
     };
   }
 
-  // A placed order that was already synced as an invoice keeps updating that
-  // invoice even after completion — QuickBooks handles the payment lifecycle.
+  const orderTotal =
+    asNumber(orderRecord?.total) ??
+    asNumber(asRecord(orderRecord?.summary)?.total) ??
+    0;
+  const capturedPaymentAmount = getCapturedPaymentAmount(order);
   const useInvoice =
-    status === "pending" || !!existingLink?.quickbooks_invoice_id;
+    status === "pending" ||
+    !!existingLink?.quickbooks_invoice_id ||
+    (orderTotal > 0 && capturedPaymentAmount < orderTotal);
 
   try {
     if (useInvoice) {
@@ -728,6 +916,17 @@ export async function syncMedusaOrderToQuickbooks(
         };
       }
 
+      const paymentMetadata = await syncQuickbooksPaymentForOrder({
+        connection,
+        config,
+        order,
+        quickbooksCustomerId,
+        quickbooksInvoiceId: String(invoice.Id),
+        existingPaymentId: asString(
+          asRecord(existingLink?.metadata)?.quickbooks_payment_id,
+        ),
+      });
+
       await quickbooksService.upsertOrderLink({
         medusa_order_id: medusaOrderId,
         quickbooks_invoice_id: asString(invoice.Id),
@@ -736,6 +935,10 @@ export async function syncMedusaOrderToQuickbooks(
         sync_type: "invoice",
         last_synced_hash: orderHash,
         last_synced_at: new Date(),
+        metadata: {
+          ...(asRecord(existingLink?.metadata) || {}),
+          ...(paymentMetadata || {}),
+        },
       });
 
       console.log("[quickbooks-order-sync] order synced as invoice", {
@@ -797,8 +1000,7 @@ export async function syncMedusaOrderToQuickbooks(
       direction: "medusa_to_quickbooks",
     };
   } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown error";
+    const errorMessage = extractQuickbooksErrorMessage(error);
     console.error("[quickbooks-order-sync] failed to sync order", {
       medusa_order_id: medusaOrderId,
       error: errorMessage,
