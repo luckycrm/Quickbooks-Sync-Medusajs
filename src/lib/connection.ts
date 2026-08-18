@@ -14,7 +14,7 @@ type ScopeLike = {
 // QuickBooks rotates refresh tokens: two concurrent refreshes with the same
 // token can invalidate the stored session and make pages report
 // "disconnected" until a lone request refreshes cleanly. Serialize refreshes
-// so concurrent requests share one refresh and re-read the stored result.
+// within this process and fail closed when refresh cannot complete.
 let refreshInFlight: Promise<unknown> | null = null;
 
 export async function getReadyQuickbooksConnection(
@@ -48,17 +48,33 @@ export async function getReadyQuickbooksConnection(
       })().finally(() => {
         refreshInFlight = null;
       });
+    }
 
+    try {
       connection = (await refreshInFlight) as typeof connection;
-    } else {
-      // Another request is already refreshing — wait for it, then read the
-      // stored connection it produced.
-      await refreshInFlight.catch(() => {});
-      connection = await quickbooksService.getConnection();
+    } catch (error) {
+      // A failed refresh means the stored authorization is not usable. Treat
+      // it as disconnected so subscribers and sync routes return a no-op
+      // without making any downstream QuickBooks API calls.
+      console.warn(
+        "[quickbooks-sync] token refresh failed; skipping QuickBooks operation",
+        {
+          code:
+            (error as any)?.response?.data?.Fault?.Error?.[0]?.code ||
+            (error as any)?.code ||
+            null,
+          message: error instanceof Error ? error.message : "Unknown refresh error",
+        },
+      );
+      connection = null;
     }
   }
 
-  if (!connection?.access_token || !connection?.realm_id) {
+  if (
+    !connection?.access_token ||
+    !connection?.refresh_token ||
+    !connection?.realm_id
+  ) {
     return { quickbooksService, config, connection: null };
   }
 
