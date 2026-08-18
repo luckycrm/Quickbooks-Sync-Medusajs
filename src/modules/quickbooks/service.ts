@@ -3,6 +3,7 @@ import { MedusaService } from "@medusajs/framework/utils";
 import QuickbooksConnection from "./models/quickbooks-connection";
 import QuickbooksCustomerLink from "./models/quickbooks-customer-link";
 import QuickbooksOrderLink from "./models/quickbooks-order-link";
+import QuickbooksProductSyncQueue from "./models/quickbooks-product-sync-queue";
 
 type UpsertConnectionInput = {
   environment: string;
@@ -30,6 +31,7 @@ class QuickbooksModuleService extends MedusaService({
   QuickbooksConnection,
   QuickbooksCustomerLink,
   QuickbooksOrderLink,
+  QuickbooksProductSyncQueue,
 }) {
   async getConnection() {
     const connections = await this.listQuickbooksConnections({
@@ -202,6 +204,96 @@ class QuickbooksModuleService extends MedusaService({
     if (links.length > 0) {
       await this.deleteQuickbooksCustomerLinks(links.map((l) => l.id));
     }
+  }
+
+  async enqueueProductSync(productId: string) {
+    const existing = await this.getProductSyncQueueByProductId(productId);
+    const input = {
+      product_id: productId,
+      status: "pending",
+      available_at: new Date(),
+      locked_at: null,
+      last_error: null,
+    };
+
+    if (existing) {
+      return await this.updateQuickbooksProductSyncQueues({
+        id: existing.id,
+        ...input,
+      });
+    }
+
+    return await this.createQuickbooksProductSyncQueues(input);
+  }
+
+  async getProductSyncQueueByProductId(productId: string) {
+    const rows = await this.listQuickbooksProductSyncQueues({
+      product_id: productId,
+    });
+
+    return rows[0] ?? null;
+  }
+
+  async getNextProductSyncQueueItem() {
+    const [rows] = await this.listAndCountQuickbooksProductSyncQueues(
+      {
+        status: "pending",
+        available_at: { $lte: new Date() },
+      },
+      {
+        order: { available_at: "ASC" },
+        take: 1,
+      },
+    );
+
+    const item = rows[0];
+    if (!item) {
+      return null;
+    }
+
+    return await this.updateQuickbooksProductSyncQueues({
+      id: item.id,
+      status: "processing",
+      locked_at: new Date(),
+    });
+  }
+
+  async releaseStaleProductSyncQueueItems() {
+    const staleBefore = new Date(Date.now() - 10 * 60 * 1000);
+    const [items] = await this.listAndCountQuickbooksProductSyncQueues({
+      status: "processing",
+      locked_at: { $lte: staleBefore },
+    });
+
+    for (const item of items) {
+      await this.updateQuickbooksProductSyncQueues({
+        id: item.id,
+        status: "pending",
+        available_at: new Date(),
+        locked_at: null,
+      });
+    }
+  }
+
+  async completeProductSyncQueueItem(id: string) {
+    await this.deleteQuickbooksProductSyncQueues([id]);
+  }
+
+  async retryProductSyncQueueItem(
+    id: string,
+    error: string,
+    delayMs: number,
+  ) {
+    const item = await this.retrieveQuickbooksProductSyncQueue(id);
+
+    return await this.updateQuickbooksProductSyncQueues({
+      id,
+      status: "pending",
+      attempts: Number(item.attempts || 0) + 1,
+      available_at: new Date(Date.now() + delayMs),
+      locked_at: null,
+      last_error: error.slice(0, 2000),
+    });
   }
 }
 

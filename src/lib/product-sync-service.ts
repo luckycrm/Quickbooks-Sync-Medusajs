@@ -696,9 +696,30 @@ export async function syncMedusaProductsToQuickbooks(
   let created = 0;
   let updated = 0;
   let skipped = 0;
+  let failed = 0;
 
   for (const productId of uniqueIds) {
-    const result = await syncMedusaProductToQuickbooks(scope, productId);
+    let result: Record<string, unknown>;
+
+    try {
+      result = await syncMedusaProductToQuickbooksWithThrottleRetry(
+        scope,
+        productId,
+      );
+    } catch (error) {
+      failed += 1;
+      result = {
+        skipped: true,
+        failed: true,
+        reason: error instanceof Error ? error.message : String(error),
+      };
+      console.error("[quickbooks-sync] product sync failed", {
+        medusa_product_id: productId,
+        reason: result.reason,
+        direction: "medusa_to_quickbooks",
+      });
+    }
+
     results.push(result);
     created += Number(result.created || 0);
     updated += Number(result.updated || 0);
@@ -712,6 +733,7 @@ export async function syncMedusaProductsToQuickbooks(
         result.skipped_variants || (result.skipped ? 1 : 0),
       ),
       reason: result.reason || null,
+      failed: result.failed === true,
       direction: "medusa_to_quickbooks",
     });
   }
@@ -721,6 +743,7 @@ export async function syncMedusaProductsToQuickbooks(
     created,
     updated,
     skipped,
+    failed,
     direction: "medusa_to_quickbooks",
   });
 
@@ -729,9 +752,38 @@ export async function syncMedusaProductsToQuickbooks(
     created,
     updated,
     skipped,
+    failed,
     results,
     direction: "medusa_to_quickbooks",
   };
+}
+
+async function syncMedusaProductToQuickbooksWithThrottleRetry(
+  scope: ScopeLike,
+  medusaProductId: string,
+) {
+  let attempts = 0;
+
+  while (true) {
+    try {
+      return await syncMedusaProductToQuickbooks(scope, medusaProductId);
+    } catch (error) {
+      attempts += 1;
+
+      if (!isQuickbooksThrottleError(error) || attempts > THROTTLE_MAX_RETRIES) {
+        throw error;
+      }
+
+      const waitMs = getThrottleWaitMs(error);
+      console.warn("[quickbooks-sync] throttled; waiting before retry", {
+        medusa_product_id: medusaProductId,
+        wait_ms: waitMs,
+        attempt: attempts,
+        direction: "medusa_to_quickbooks",
+      });
+      await sleep(waitMs);
+    }
+  }
 }
 
 type BatchOperation = {
