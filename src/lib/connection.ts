@@ -29,7 +29,11 @@ export async function getReadyQuickbooksConnection(
     return { quickbooksService, config, connection: null };
   }
 
-  let connection = await quickbooksService.getConnection();
+  type QuickbooksConnection = Awaited<
+    ReturnType<QuickbooksModuleService["getConnection"]>
+  >;
+  let connection: QuickbooksConnection | null =
+    await quickbooksService.getConnection();
 
   if (
     connection &&
